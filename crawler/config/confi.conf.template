@@ -1,0 +1,5 @@
+[selenium]
+chrome_dir = CHROME_DIR
+
+[dataset]
+image_target_dir = IMAGE_TARGET_DIR
