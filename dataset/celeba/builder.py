@@ -10,11 +10,11 @@ import numpy as np
 from datetime import datetime
 from selector import get_image_files, check_attr_defined
 
-tf.flags.DEFINE_string('image_dir', '',
+tf.flags.DEFINE_string('image_dir', None,
                        'Images directory')
-tf.flags.DEFINE_string('attributes_file', '',
+tf.flags.DEFINE_string('attributes_file', None,
                        'Attributes file path')
-tf.flags.DEFINE_string('attributes', '', """
+tf.flags.DEFINE_string('attributes', None, """
 Images that have specified attributes are converted.
 
 You may also pass a comma separated list of attributes, as in
@@ -217,13 +217,13 @@ def _process_dataset(attribute, directory, num_shards):
 def main(_):
     assert not FLAGS.num_shards % FLAGS.num_threads, (
         'Please make the FLAGS.num_threads commensurate with FLAGS.num_shards')
-    assert FLAGS.attributes.strip() != '', (
+    assert FLAGS.attributes, (
         'FLAGS.attributes should be provided'
     )
-    assert FLAGS.attributes_file.strip() != '', (
+    assert FLAGS.attributes_file, (
         'FLAGS.attributes_file should be provided'
     )
-    assert FLAGS.image_dir.strip() != '', (
+    assert FLAGS.image_dir, (
         'FLAGS.image_dir should be provided'
     )
     print 'Saving results to %s' % FLAGS.output_directory

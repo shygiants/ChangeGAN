@@ -58,4 +58,5 @@ def get_image_files(attribute, directory, attibutes_file):
 
 if __name__ == '__main__':
     images = get_image_files('blond_hair', '', '/Users/SHYBookPro/Desktop/celebA/list_attr_celeba.txt')
+    images = get_image_files('black_hair', '', '/Users/SHYBookPro/Desktop/celebA/list_attr_celeba.txt')
     print images
