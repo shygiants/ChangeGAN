@@ -27,6 +27,8 @@ tf.app.flags.DEFINE_integer('num_shards', 32,
                             'Number of shards in TFRecord files.')
 tf.app.flags.DEFINE_integer('num_threads', 8,
                             'Number of threads to preprocess the images.')
+tf.app.flags.DEFINE_integer('num_images', None,
+                            'Number of images to convert.')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -211,6 +213,9 @@ def _process_image_files(attribute, image_files, num_shards):
 
 def _process_dataset(attribute, directory, num_shards):
     image_files = get_image_files(attribute, directory, FLAGS.attributes_file)
+    if FLAGS.num_images is not None:
+        image_files = image_files[:FLAGS.num_images]
+
     _process_image_files(attribute, image_files, num_shards)
 
 

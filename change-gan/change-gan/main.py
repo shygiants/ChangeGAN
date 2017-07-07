@@ -119,16 +119,21 @@ def run(target,
         dataset_name,
         domain_a,
         domain_b,
-        dataset_dir,
+        train_dir,
+        eval_dir,
         train_batch_size,
         eval_batch_size):
     ######################
     # Select the dataset #
     ######################
-    dataset_a = dataset_factory.get_dataset(
-        dataset_name, domain_a, dataset_dir)
-    dataset_b = dataset_factory.get_dataset(
-        dataset_name, domain_b, dataset_dir)
+    train_dataset_a = dataset_factory.get_dataset(
+        dataset_name, domain_a, train_dir)
+    train_dataset_b = dataset_factory.get_dataset(
+        dataset_name, domain_b, train_dir)
+    eval_dataset_a = dataset_factory.get_dataset(
+        dataset_name, domain_a, eval_dir)
+    eval_dataset_b = dataset_factory.get_dataset(
+        dataset_name, domain_b, eval_dir)
 
     # If the server is chief which is `master`
     # In between graph replication Chief is one node in
@@ -143,7 +148,7 @@ def run(target,
         with evaluation_graph.as_default():
             # Inputs
             images_a, images_b = autoconverter.input_fn(
-                dataset_a, dataset_b,
+                eval_dataset_a, eval_dataset_b,
                 batch_size=eval_batch_size, is_training=False)
 
             # Model
@@ -169,7 +174,7 @@ def run(target,
         with tf.device(tf.train.replica_device_setter()):
             # Inputs
             images_a, images_b = autoconverter.input_fn(
-                dataset_a, dataset_b,
+                train_dataset_a, train_dataset_b,
                 batch_size=train_batch_size, is_training=True)
 
             # Model
@@ -277,10 +282,14 @@ if __name__ == '__main__':
                         type=str,
                         help='The name of the domain B.',
                         default='blond_hair')
-    parser.add_argument('--dataset-dir',
+    parser.add_argument('--train-dir',
                         required=True,
                         type=str,
-                        help='The directory where the dataset files are stored.')
+                        help='The directory where the training dataset files are stored.')
+    parser.add_argument('--eval-dir',
+                        required=True,
+                        type=str,
+                        help='The directory where the eval dataset files are stored.')
     parser.add_argument('--train-batch-size',
                         type=int,
                         default=40,

@@ -7,7 +7,7 @@ from gan_utils import encoder, decoder, discriminator, preprocess_image
 
 slim = tf.contrib.slim
 
-default_image_size = 128
+default_image_size = 64
 
 
 def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
@@ -36,18 +36,18 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
             outputs_a_a, outputs_b_b = autoencoder(inputs_a, inputs_b)
 
             # TODO: Decide whether the outputs of autoencoder are fed to discriminator
-            # discriminator(outputs_a_a, encoder_dims, scope='Discriminator_A', reuse=True)
-            # discriminator(outputs_b_b, encoder_dims, scope='Discriminator_B', reuse=True)
+            logits_a_a_fake, probs_a_a_fake = discriminator(outputs_a_a, encoder_dims, scope='Discriminator_A')
+            logits_b_b_fake, probs_b_b_fake = discriminator(outputs_b_b, encoder_dims, scope='Discriminator_B')
 
             #############################
             # Converter (DiscoGAN) part #
             #############################
             outputs_a_b, outputs_b_a = converter(inputs_a, inputs_b, reuse=True)
 
-            logits_a_fake, probs_a_fake = discriminator(outputs_b_a, encoder_dims, scope='Discriminator_A')
+            logits_a_fake, probs_a_fake = discriminator(outputs_b_a, encoder_dims, scope='Discriminator_A', reuse=True)
             logits_a_real, probs_a_real = discriminator(inputs_a, encoder_dims, scope='Discriminator_A', reuse=True)
 
-            logits_b_fake, probs_b_fake = discriminator(outputs_a_b, encoder_dims, scope='Discriminator_B')
+            logits_b_fake, probs_b_fake = discriminator(outputs_a_b, encoder_dims, scope='Discriminator_B', reuse=True)
             logits_b_real, probs_b_real = discriminator(inputs_b, encoder_dims, scope='Discriminator_B', reuse=True)
 
             outputs_b_a_b, outputs_a_b_a = converter(outputs_b_a, outputs_a_b, reuse=True)
@@ -86,7 +86,10 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
     l_d_b_real = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_b_real), logits_b_real))
     l_d_b = l_d_b_fake + l_d_b_real
 
-    l_d = l_d_a + l_d_b
+    l_d_a_a = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.zeros_like(logits_a_a_fake), logits_a_a_fake))
+    l_d_b_b = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.zeros_like(logits_b_b_fake), logits_b_b_fake))
+
+    l_d = l_d_a + l_d_b + l_d_a_a + l_d_b_b
     train_op_d = tf.train.AdamOptimizer(
         learning_rate=learning_rate
     ).minimize(l_d, global_step=global_step, var_list=d_vars)
@@ -94,6 +97,8 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
     # Losses for discriminator
     l_g_a = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_a_fake), logits_a_fake))
     l_g_b = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_b_fake), logits_b_fake))
+    l_g_a_a = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_a_a_fake), logits_a_a_fake))
+    l_g_b_b = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_b_b_fake), logits_b_b_fake))
 
     # Autoencoder reconstruction
     l_const_a_auto = tf.reduce_mean(tf.losses.mean_squared_error(inputs_a, outputs_a_a))
@@ -103,7 +108,7 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
     l_const_a_conv = tf.reduce_mean(tf.losses.mean_squared_error(inputs_a, outputs_a_b_a))
     l_const_b_conv = tf.reduce_mean(tf.losses.mean_squared_error(inputs_b, outputs_b_a_b))
 
-    l_g = l_g_a + l_g_b + l_const_a_auto + l_const_b_auto + l_const_a_conv + l_const_b_conv
+    l_g = l_g_a + l_g_b + l_g_a_a + l_g_b_b + l_const_a_auto + l_const_b_auto + l_const_a_conv + l_const_b_conv
     train_op_g = tf.train.AdamOptimizer(
         learning_rate=learning_rate
     ).minimize(l_g, global_step=global_step, var_list=g_vars)
@@ -115,10 +120,14 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
         tf.summary.scalar('L_D_B_Fake', l_d_b_fake)
         tf.summary.scalar('L_D_B_Real', l_d_b_real)
         tf.summary.scalar('L_D_B', l_d_b)
+        tf.summary.scalar('L_D_A_A', l_d_a_a)
+        tf.summary.scalar('L_D_B_B', l_d_b_b)
         tf.summary.scalar('L_D', l_d)
 
         tf.summary.scalar('L_G_A', l_g_a)
         tf.summary.scalar('L_G_B', l_g_b)
+        tf.summary.scalar('L_G_A_A', l_g_a_a)
+        tf.summary.scalar('L_G_B_B', l_g_b_b)
         tf.summary.scalar('L_Const_A_Auto', l_const_a_auto)
         tf.summary.scalar('L_Const_B_Auto', l_const_b_auto)
         tf.summary.scalar('L_Const_A_Conv', l_const_a_conv)
@@ -154,5 +163,9 @@ def input_fn(dataset_a, dataset_b, batch_size=32, num_readers=4, is_training=Tru
         batch_size=batch_size,
         num_threads=multiprocessing.cpu_count(),
         capacity=5 * batch_size)
+
+    batch_queue = slim.prefetch_queue.prefetch_queue(
+        [images_a, images_b], capacity=2)
+    images_a, images_b = batch_queue.dequeue()
 
     return images_a, images_b
