@@ -10,49 +10,51 @@ slim = tf.contrib.slim
 default_image_size = 64
 
 
-def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
+def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None, weight_decay=0.0001):
     encoder_dims = [64, 128, 256, 512]
     decoder_dims = [256, 128, 64, 3]
     with tf.variable_scope(scope, 'Autoconverter', [inputs_a, inputs_b]):
-        with slim.arg_scope([slim.batch_norm],
-                            is_training=is_training):
-            def autoencoder(inputs_a, inputs_b, reuse=None):
-                z_a = encoder(inputs_a, encoder_dims, scope='Encoder_A', reuse=reuse)
-                z_b = encoder(inputs_b, encoder_dims, scope='Encoder_B', reuse=reuse)
-                outputs_a_a = decoder(z_a, decoder_dims, scope='Decoder_A', reuse=reuse)
-                outputs_b_b = decoder(z_b, decoder_dims, scope='Decoder_B', reuse=reuse)
-                return outputs_a_a, outputs_b_b
+        with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
+                            weights_regularizer=slim.l2_regularizer(weight_decay)):
+            with slim.arg_scope([slim.batch_norm],
+                                is_training=is_training):
+                def autoencoder(inputs_a, inputs_b, reuse=None):
+                    z_a = encoder(inputs_a, encoder_dims, scope='Encoder_A', reuse=reuse)
+                    z_b = encoder(inputs_b, encoder_dims, scope='Encoder_B', reuse=reuse)
+                    outputs_a_a = decoder(z_a, decoder_dims, scope='Decoder_A', reuse=reuse)
+                    outputs_b_b = decoder(z_b, decoder_dims, scope='Decoder_B', reuse=reuse)
+                    return outputs_a_a, outputs_b_b
 
-            def converter(inputs_a, inputs_b, reuse=None):
-                z_a = encoder(inputs_a, encoder_dims, scope='Encoder_A', reuse=reuse)
-                z_b = encoder(inputs_b, encoder_dims, scope='Encoder_B', reuse=reuse)
-                outputs_a_b = decoder(z_a, decoder_dims, scope='Decoder_B', reuse=reuse)
-                outputs_b_a = decoder(z_b, decoder_dims, scope='Decoder_A', reuse=reuse)
-                return outputs_a_b, outputs_b_a
+                def converter(inputs_a, inputs_b, reuse=None):
+                    z_a = encoder(inputs_a, encoder_dims, scope='Encoder_A', reuse=reuse)
+                    z_b = encoder(inputs_b, encoder_dims, scope='Encoder_B', reuse=reuse)
+                    outputs_a_b = decoder(z_a, decoder_dims, scope='Decoder_B', reuse=reuse)
+                    outputs_b_a = decoder(z_b, decoder_dims, scope='Decoder_A', reuse=reuse)
+                    return outputs_a_b, outputs_b_a
 
-            ####################
-            # Autoencoder part #
-            ####################
-            outputs_a_a, outputs_b_b = autoencoder(inputs_a, inputs_b)
+                ####################
+                # Autoencoder part #
+                ####################
+                outputs_a_a, outputs_b_b = autoencoder(inputs_a, inputs_b)
 
-            # TODO: Decide whether the outputs of autoencoder are fed to discriminator
-            logits_a_a_fake, probs_a_a_fake = discriminator(outputs_a_a, encoder_dims, scope='Discriminator_A')
-            logits_b_b_fake, probs_b_b_fake = discriminator(outputs_b_b, encoder_dims, scope='Discriminator_B')
+                # TODO: Decide whether the outputs of autoencoder are fed to discriminator
+                logits_a_a_fake, probs_a_a_fake = discriminator(outputs_a_a, encoder_dims, scope='Discriminator_A')
+                logits_b_b_fake, probs_b_b_fake = discriminator(outputs_b_b, encoder_dims, scope='Discriminator_B')
 
-            #############################
-            # Converter (DiscoGAN) part #
-            #############################
-            outputs_a_b, outputs_b_a = converter(inputs_a, inputs_b, reuse=True)
+                #############################
+                # Converter (DiscoGAN) part #
+                #############################
+                outputs_a_b, outputs_b_a = converter(inputs_a, inputs_b, reuse=True)
 
-            logits_a_fake, probs_a_fake = discriminator(outputs_b_a, encoder_dims, scope='Discriminator_A', reuse=True)
-            logits_a_real, probs_a_real = discriminator(inputs_a, encoder_dims, scope='Discriminator_A', reuse=True)
+                logits_a_fake, probs_a_fake = discriminator(outputs_b_a, encoder_dims, scope='Discriminator_A', reuse=True)
+                logits_a_real, probs_a_real = discriminator(inputs_a, encoder_dims, scope='Discriminator_A', reuse=True)
 
-            logits_b_fake, probs_b_fake = discriminator(outputs_a_b, encoder_dims, scope='Discriminator_B', reuse=True)
-            logits_b_real, probs_b_real = discriminator(inputs_b, encoder_dims, scope='Discriminator_B', reuse=True)
+                logits_b_fake, probs_b_fake = discriminator(outputs_a_b, encoder_dims, scope='Discriminator_B', reuse=True)
+                logits_b_real, probs_b_real = discriminator(inputs_b, encoder_dims, scope='Discriminator_B', reuse=True)
 
-            outputs_b_a_b, outputs_a_b_a = converter(outputs_b_a, outputs_a_b, reuse=True)
+                outputs_b_a_b, outputs_a_b_a = converter(outputs_b_a, outputs_a_b, reuse=True)
 
-            outputs = [outputs_a_a, outputs_b_b, outputs_a_b, outputs_b_a, outputs_a_b_a, outputs_b_a_b]
+                outputs = [outputs_a_a, outputs_b_b, outputs_a_b, outputs_b_a, outputs_a_b_a, outputs_b_a_b]
 
     with tf.name_scope('images'):
         tf.summary.image('X_A', inputs_a)
@@ -91,7 +93,9 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
 
     l_d = l_d_a + l_d_b + l_d_a_a + l_d_b_b
     train_op_d = tf.train.AdamOptimizer(
-        learning_rate=learning_rate
+        learning_rate=learning_rate,
+        beta1=0.5,
+        beta2=0.999
     ).minimize(l_d, global_step=global_step, var_list=d_vars)
 
     # Losses for discriminator
@@ -110,7 +114,9 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None):
 
     l_g = l_g_a + l_g_b + l_g_a_a + l_g_b_b + l_const_a_auto + l_const_b_auto + l_const_a_conv + l_const_b_conv
     train_op_g = tf.train.AdamOptimizer(
-        learning_rate=learning_rate
+        learning_rate=learning_rate,
+        beta1=0.5,
+        beta2=0.999
     ).minimize(l_g, global_step=global_step, var_list=g_vars)
 
     with tf.name_scope('losses'):

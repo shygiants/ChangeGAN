@@ -7,7 +7,7 @@ TRAINER_PACKAGE_PATH=change-gan
 MAIN_TRAINER_MODULE=change-gan.main
 
 BUCKET_NAME=mlcampjeju2017-mlengine
-JOB_DIR="gs://$BUCKET_NAME/autoconverter-4"
+JOB_DIR="gs://$BUCKET_NAME/autoconverter-6"
 PACKAGE_STAGING_LOCATION="gs://$BUCKET_NAME/stage"
 TRAIN_DIR="gs://$BUCKET_NAME/data"
 EVAL_DIR="gs://$BUCKET_NAME/eval"
@@ -29,4 +29,5 @@ gcloud ml-engine jobs submit training $JOB_NAME \
     --train-steps 100000 \
     --eval-steps 1 \
     --train-batch-size 200 \
-    --eval-batch-size 3
+    --eval-batch-size 3 \
+    --learning-rate 0.0002

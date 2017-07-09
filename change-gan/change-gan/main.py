@@ -189,7 +189,7 @@ def run(target,
                                                is_chief=is_chief,
                                                checkpoint_dir=job_dir,
                                                hooks=hooks,
-                                               save_checkpoint_secs=300,
+                                               save_checkpoint_secs=60,
                                                save_summaries_steps=50) as session:
             # Global step to keep track of global number of steps particularly in
             # distributed setting
@@ -260,7 +260,7 @@ if __name__ == '__main__':
                         default=None,
                         type=int)
     parser.add_argument('--eval-frequency',
-                        default=1,
+                        default=3,
                         help='Perform one evaluation per n steps')
     parser.add_argument('--job-dir',
                         required=True,
