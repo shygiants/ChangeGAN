@@ -14,7 +14,7 @@ class Crawler:
     def __init__(self):
         self.driver = webdriver.Chrome(config.get('selenium', 'chrome_dir'))
         # Wait for 3 seconds to load resources from the server
-        self.driver.implicitly_wait(3)
+        self.driver.implicitly_wait(5)
 
     def open(self, url):
         self.driver.get(url)
@@ -31,15 +31,19 @@ class Crawler:
     def execute_script(self, script):
         self.driver.execute_script(script)
 
-    def infinite_scroll(self):
+    def infinite_scroll(self, slowly=False, rate=1.0, sleep_time=1.5):
         # Scroll to get all the data because of infinite scrolling
         def get_scroll_height():
             return self.driver.execute_script('return document.body.scrollHeight')
 
         last_height = get_scroll_height()
         while True:
-            self.driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
-            time.sleep(1.5)
+            if slowly:
+                for _ in range(20):
+                    self.driver.execute_script('window.scrollBy(0, document.body.scrollHeight * {});'.format(rate * 0.05))
+                    time.sleep(sleep_time)
+            self.driver.execute_script('window.scrollTo(0, document.body.scrollHeight * {});'.format(rate))
+            time.sleep(sleep_time)
             new_height = get_scroll_height()
             if new_height == last_height:
                 break

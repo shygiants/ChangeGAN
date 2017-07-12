@@ -1,4 +1,4 @@
-""" Crawl photos from a site of Ralph Lauren """
+""" Crawl photos from a site of American Eagle """
 
 import os
 
