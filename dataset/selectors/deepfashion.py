@@ -21,6 +21,9 @@ if __name__ == '__main__':
     images = get_image_files('top,flat',
                              '/Users/SHYBookPro/Desktop/deepFashion/inshop',
                              '/Users/SHYBookPro/Desktop/deepFashion/inshop/Anno/list_bbox_inshop.txt')
+    images = get_image_files('top,front',
+                             '/Users/SHYBookPro/Desktop/deepFashion/inshop',
+                             '/Users/SHYBookPro/Desktop/deepFashion/inshop/Anno/list_bbox_inshop.txt')
     # images = get_image_files('top,zoom',
     #                          '/Users/SHYBookPro/Desktop/deepFashion/landmark',
     #                          '/Users/SHYBookPro/Desktop/deepFashion/landmark/Anno/list_landmarks.txt',
