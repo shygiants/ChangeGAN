@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 
 from datetime import datetime
-from selector import get_image_files, check_attr_defined
+from selectors.celeba import get_image_files, check_attr_defined
 
 tf.flags.DEFINE_string('image_dir', None,
                        'Images directory')
