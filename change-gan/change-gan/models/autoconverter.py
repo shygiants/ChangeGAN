@@ -112,7 +112,7 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None, we
     l_const_a_conv = tf.reduce_mean(tf.losses.mean_squared_error(inputs_a, outputs_a_b_a))
     l_const_b_conv = tf.reduce_mean(tf.losses.mean_squared_error(inputs_b, outputs_b_a_b))
 
-    l_g = l_g_a + l_g_b + l_g_a_a + l_g_b_b + l_const_a_auto + l_const_b_auto + l_const_a_conv + l_const_b_conv
+    l_g = l_g_a + l_g_b + l_g_a_a + l_g_b_b + 10. * (l_const_a_auto + l_const_b_auto + l_const_a_conv + l_const_b_conv)
     train_op_g = tf.train.AdamOptimizer(
         learning_rate=learning_rate,
         beta1=0.5,
