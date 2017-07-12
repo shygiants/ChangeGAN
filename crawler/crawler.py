@@ -4,6 +4,7 @@ import time
 import ConfigParser
 
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 
 config = ConfigParser.ConfigParser()
 config.read('config/config.conf')
@@ -22,7 +23,10 @@ class Crawler:
         return self.driver.find_elements_by_css_selector(css_selector)
 
     def find_element(self, css_selector):
-        return self.driver.find_element_by_css_selector(css_selector)
+        try:
+            return self.driver.find_element_by_css_selector(css_selector)
+        except NoSuchElementException:
+            return None
 
     def execute_script(self, script):
         self.driver.execute_script(script)

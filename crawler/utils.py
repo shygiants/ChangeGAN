@@ -13,6 +13,10 @@ def img2src(imgs):
     return map(lambda img: img.get_attribute('src'), imgs)
 
 
+def img2srcset(imgs):
+    return map(lambda img: img.get_attribute('srcset'), imgs)
+
+
 def download_images(imgs, dir):
     dir = os.path.join(config.get('dataset', 'image_target_dir'), dir)
     if not os.path.exists(dir):
