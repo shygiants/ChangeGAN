@@ -1,5 +1,6 @@
 """ Utils """
 import os
+import itertools
 import tensorflow as tf
 
 
@@ -98,3 +99,7 @@ def filter_items(items, attrs):
 
 def append_path(dir, items, key='filename'):
     return map(lambda item: os.path.join(dir, item[key]), items)
+
+
+def merge(nested_list):
+    return list(itertools.chain.from_iterable(nested_list))
