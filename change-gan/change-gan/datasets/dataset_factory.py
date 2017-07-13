@@ -1,9 +1,11 @@
 """A factory-pattern class which returns images."""
 
 import celeba
+import clothes
 
 datasets_map = {
     'celeba': celeba,
+    'clothes': clothes,
 }
 
 

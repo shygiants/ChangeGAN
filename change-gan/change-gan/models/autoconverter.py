@@ -98,7 +98,7 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None, we
         beta2=0.999
     ).minimize(l_d, global_step=global_step, var_list=d_vars)
 
-    # Losses for discriminator
+    # Losses for generators
     l_g_a = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_a_fake), logits_a_fake))
     l_g_b = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_b_fake), logits_b_fake))
     l_g_a_a = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(logits_a_a_fake), logits_a_a_fake))

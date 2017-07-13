@@ -8,7 +8,8 @@ import threading
 import tensorflow as tf
 
 from datasets import dataset_factory
-from models import autoconverter
+from models import models_factory
+from models import autoconverter, change_gan
 
 slim = tf.contrib.slim
 
@@ -117,6 +118,7 @@ def run(target,
         learning_rate,
         eval_frequency,
         dataset_name,
+        model_name,
         domain_a,
         domain_b,
         train_dir,
@@ -147,12 +149,12 @@ def run(target,
         evaluation_graph = tf.Graph()
         with evaluation_graph.as_default():
             # Inputs
-            images_a, images_b = autoconverter.input_fn(
+            images_a, images_b = change_gan.input_fn(
                 eval_dataset_a, eval_dataset_b,
                 batch_size=eval_batch_size, is_training=False)
 
             # Model
-            outputs = autoconverter.model_fn(
+            outputs = change_gan.model_fn(
                 images_a, images_b, learning_rate, is_training=False)
 
         hooks = [EvaluationRunHook(
@@ -172,13 +174,14 @@ def run(target,
         # See:
         # https://www.tensorflow.org/api_docs/python/tf/train/replica_device_setter
         with tf.device(tf.train.replica_device_setter()):
+            model = models_factory.get_model(model_name)
             # Inputs
-            images_a, images_b = autoconverter.input_fn(
+            images_a, images_b = model.input_fn(
                 train_dataset_a, train_dataset_b,
                 batch_size=train_batch_size, is_training=True)
 
             # Model
-            train_op, global_step, outputs = autoconverter.model_fn(
+            train_op, global_step, outputs = model.model_fn(
                 images_a, images_b, learning_rate, is_training=True)
 
         # Creates a MonitoredSession for training
@@ -269,19 +272,24 @@ if __name__ == '__main__':
                           GCS or local dir for checkpoints, exports, and
                           summaries. Use an existing directory to load a
                           trained model, or a new directory to retrain""")
+    parser.add_argument('--model-name',
+                        type=str,
+                        help='The name of the model to use.',
+                        choices=models_factory.models_map.keys(),
+                        default='change_gan')
     parser.add_argument('--dataset-name',
                         type=str,
                         help='The name of the dataset to load.',
                         choices=dataset_factory.datasets_map.keys(),
-                        default='celeba')
+                        default='clothes')
     parser.add_argument('--domain-a',
                         type=str,
                         help='The name of the domain A.',
-                        default='black_hair')
+                        default='models')
     parser.add_argument('--domain-b',
                         type=str,
                         help='The name of the domain B.',
-                        default='blond_hair')
+                        default='clothes')
     parser.add_argument('--train-dir',
                         required=True,
                         type=str,
