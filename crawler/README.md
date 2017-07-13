@@ -2,13 +2,26 @@
 
 ## Preliminary
 
-* [Selenium]()
-* [Chromedriver]()
+* [Selenium](http://www.seleniumhq.org)
+* [Chromedriver](https://sites.google.com/a/chromium.org/chromedriver/downloads)
 
 ## Supports
 
-* [H&M]()
-* [Gucci]()
+* American Eagle
+* Armani Collezioni
+* Beaker
+* COS
+* EA7
+* Emprio Armani
+* Gap
+* Giorgio Armani
+* Gucci
+* H&M
+* Hollister
+* Hugo Boss
+* KUHO
+* Lebeige
+* Ralph Lauren
 
 ## Usage
 

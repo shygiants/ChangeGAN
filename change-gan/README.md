@@ -1,5 +1,11 @@
 # ChangeGAN
 
+## ChangeGAN
+
+![Abstract image of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/abstract.png)
+
+Change part of image with other image. For instance, change clothes that a model wearing with other clothes.
+
 ## AutoConverter
 
 Autoencoder + DiscoGAN
