@@ -1,13 +1,18 @@
 """ Selects images """
 
 import os
+import ConfigParser
+
 from utils import merge
 import tensorflow as tf
 
+config = ConfigParser.ConfigParser()
+config.read('config/config.conf')
 
-def get_image_files(attrs, directory):
+
+def get_image_files(attrs):
     images = []
-    directory = os.path.join(directory, attrs)
+    directory = os.path.join(config.get('crawled', 'image_dir'), attrs)
     for dirname, subdirs, filenames in tf.gfile.Walk(directory):
         if len(subdirs) == 0:
             files = filter(lambda filename: 'jpg' in filename, filenames)
@@ -19,5 +24,5 @@ def get_image_files(attrs, directory):
 
 
 if __name__ == '__main__':
-    get_image_files('clothes', '/Users/SHYBookPro/Desktop/clothes')
-    get_image_files('models', '/Users/SHYBookPro/Desktop/clothes')
+    get_image_files('clothes')
+    get_image_files('models')

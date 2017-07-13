@@ -8,12 +8,9 @@ import tensorflow as tf
 import numpy as np
 
 from datetime import datetime
-from selectors.celeba import get_image_files, check_attr_defined
+from selectors import deepfashion, crawled, celeba
+import itertools
 
-tf.flags.DEFINE_string('image_dir', None,
-                       'Images directory')
-tf.flags.DEFINE_string('attributes_file', None,
-                       'Attributes file path')
 tf.flags.DEFINE_string('attributes', None, """
 Images that have specified attributes are converted.
 
@@ -211,8 +208,20 @@ def _process_image_files(attribute, image_files, num_shards):
     sys.stdout.flush()
 
 
-def _process_dataset(attribute, directory, num_shards):
-    image_files = get_image_files(attribute, directory, FLAGS.attributes_file)
+def _process_dataset(attribute, num_shards):
+    image_files = []
+    if attribute in celeba._PREDEFINED_ATTR:
+        image_files = celeba.get_image_files(attribute)
+    elif attribute == 'clothes':
+        image_files.append(deepfashion.get_image_files('top,flat'))
+        image_files.append(crawled.get_image_files('clothes'))
+    elif attribute == 'models':
+        image_files.append(deepfashion.get_image_files('top,front'))
+        image_files.append(crawled.get_image_files('models'))
+    else:
+        raise LookupError
+    image_files = list(itertools.chain.from_iterable(image_files))
+
     if FLAGS.num_images is not None:
         image_files = image_files[:FLAGS.num_images]
 
@@ -225,21 +234,14 @@ def main(_):
     assert FLAGS.attributes, (
         'FLAGS.attributes should be provided'
     )
-    assert FLAGS.attributes_file, (
-        'FLAGS.attributes_file should be provided'
-    )
-    assert FLAGS.image_dir, (
-        'FLAGS.image_dir should be provided'
-    )
     print 'Saving results to %s' % FLAGS.output_directory
 
     if not os.path.exists(FLAGS.output_directory):
         os.makedirs(FLAGS.output_directory)
 
     attributes = FLAGS.attributes.split(',')
-    check_attr_defined(attributes)
     for attribute in attributes:
-        _process_dataset(attribute, FLAGS.image_dir, FLAGS.num_shards)
+        _process_dataset(attribute, FLAGS.num_shards)
 
 if __name__ == '__main__':
     tf.app.run()

@@ -1,0 +1,10 @@
+[celeba]
+image_dir = IMAGE_DIR
+attributes_file = ATTRIBUTES_FILE
+
+[deepfashion]
+image_dir = IMAGE_DIR
+attributes_file = ATTRIBUTES_FILE
+
+[crawled]
+image_dir = IMAGE_DIR
