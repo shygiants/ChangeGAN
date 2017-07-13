@@ -1,12 +1,13 @@
 # ChangeGAN
 
-## ChangeGAN
 ![Abstract image of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/abstract.png)
 
 [ChangeGAN](https://github.com/shygiants/ChangeGAN/tree/master/change-gan)
 
-## Dataset
+## Modules
+
+### Dataset
 [Dataset](https://github.com/shygiants/ChangeGAN/tree/master/dataset)
 
-## Crawler
+### Crawler
 [Crawler](https://github.com/shygiants/ChangeGAN/tree/master/crawler)
