@@ -1,15 +1,20 @@
 """ Converts CelebA data to TFRecords file format with Example protos """
 
+from __future__ import division
+
 import sys
 import os
 import threading
+import itertools
+import random
 
 import tensorflow as tf
 import numpy as np
 
 from datetime import datetime
 from selectors import deepfashion, crawled, celeba
-import itertools
+import utils
+
 
 tf.flags.DEFINE_string('attributes', None, """
 Images that have specified attributes are converted.
@@ -18,6 +23,8 @@ You may also pass a comma separated list of attributes, as in
 
 python builder.py --attributes=blond_hair,black_hair
 """)
+tf.app.flags.DEFINE_boolean('bound_box', False,
+                            'Whether to encode bound boxes.')
 tf.app.flags.DEFINE_string('output_directory', '/tmp/',
                            'Output data directory')
 tf.app.flags.DEFINE_integer('num_shards', 32,
@@ -28,105 +35,6 @@ tf.app.flags.DEFINE_integer('num_images', None,
                             'Number of images to convert.')
 
 FLAGS = tf.app.flags.FLAGS
-
-
-def _int64_feature(value):
-    """Wrapper for inserting int64 features into Example proto."""
-    if not isinstance(value, list):
-        value = [value]
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-
-
-def _float_feature(value):
-    """Wrapper for inserting float features into Example proto."""
-    if not isinstance(value, list):
-        value = [value]
-    return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-
-
-def _bytes_feature(value):
-    """Wrapper for inserting bytes features into Example proto."""
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-
-
-def _convert_to_example(filename, image_buffer, height, width):
-    colorspace = 'RGB'
-    channels = 3
-    image_format = 'JPEG'
-
-    example = tf.train.Example(features=tf.train.Features(feature={
-      'image/height': _int64_feature(height),
-      'image/width': _int64_feature(width),
-      'image/colorspace': _bytes_feature(colorspace),
-      'image/channels': _int64_feature(channels),
-      'image/format': _bytes_feature(image_format),
-      'image/filename': _bytes_feature(os.path.basename(filename)),
-      'image/encoded': _bytes_feature(image_buffer)}))
-    return example
-
-
-class ImageCoder(object):
-    """Helper class that provides TensorFlow image coding utilities."""
-
-    def __init__(self):
-        # Create a single Session to run all image coding calls.
-        self._sess = tf.Session()
-
-        # Initializes function that converts PNG to JPEG data.
-        self._png_data = tf.placeholder(dtype=tf.string)
-        image = tf.image.decode_png(self._png_data, channels=3)
-        self._png_to_jpeg = tf.image.encode_jpeg(image, format='rgb', quality=100)
-
-        # Initializes function that converts CMYK JPEG data to RGB JPEG data.
-        self._cmyk_data = tf.placeholder(dtype=tf.string)
-        image = tf.image.decode_jpeg(self._cmyk_data, channels=0)
-        self._cmyk_to_rgb = tf.image.encode_jpeg(image, format='rgb', quality=100)
-
-        # Initializes function that decodes RGB JPEG data.
-        self._decode_jpeg_data = tf.placeholder(dtype=tf.string)
-        self._decode_jpeg = tf.image.decode_jpeg(self._decode_jpeg_data, channels=3)
-
-    def png_to_jpeg(self, image_data):
-        return self._sess.run(self._png_to_jpeg,
-                              feed_dict={self._png_data: image_data})
-
-    def cmyk_to_rgb(self, image_data):
-        return self._sess.run(self._cmyk_to_rgb,
-                              feed_dict={self._cmyk_data: image_data})
-
-    def decode_jpeg(self, image_data):
-        image = self._sess.run(self._decode_jpeg,
-                               feed_dict={self._decode_jpeg_data: image_data})
-        assert len(image.shape) == 3
-        assert image.shape[2] == 3
-        return image
-
-
-def _process_image(filename, coder):
-    # Read the image file.
-    with tf.gfile.FastGFile(filename, 'r') as f:
-        image_data = f.read()
-
-    # # Clean the dirty data.
-    # if _is_cmyk(filename):
-    #     # 22 JPEG images are in CMYK colorspace.
-    #     print('Converting CMYK to RGB for %s' % filename)
-    #     image_data = coder.cmyk_to_rgb(image_data)
-
-    try:
-        # Decode the RGB JPEG.
-        image = coder.decode_jpeg(image_data)
-    except tf.errors.InvalidArgumentError:
-        print('Converting PNG to JPEG for %s' % filename)
-        image_data = coder.png_to_jpeg(image_data)
-
-    # Check that image converted to RGB
-    assert len(image.shape) == 3
-    height = image.shape[0]
-    width = image.shape[1]
-    assert image.shape[2] == 3
-
-    return image_data, height, width
 
 
 def _process_image_files_batch(coder, thread_index, ranges, attribute, filenames, num_shards):
@@ -150,28 +58,15 @@ def _process_image_files_batch(coder, thread_index, ranges, attribute, filenames
         output_file = os.path.join(FLAGS.output_directory, output_filename)
         writer = tf.python_io.TFRecordWriter(output_file)
 
-        shard_counter = 0
         files_in_shard = np.arange(shard_ranges[s], shard_ranges[s + 1], dtype=int)
-        for i in files_in_shard:
-            filename = filenames[i]
 
-            image_buffer, height, width = _process_image(filename, coder)
-
-            example = _convert_to_example(filename, image_buffer, height, width)
-            writer.write(example.SerializeToString())
-            shard_counter += 1
-            counter += 1
-
-            if not counter % 1000:
-                print('%s [thread %d]: Processed %d of %d images in thread batch.' %
-                      (datetime.now(), thread_index, counter, num_files_in_thread))
-                sys.stdout.flush()
+        _write_examples(writer, coder, filenames, files_in_shard)
 
         writer.close()
+        counter += len(files_in_shard)
         print('%s [thread %d]: Wrote %d images to %s' %
-              (datetime.now(), thread_index, shard_counter, output_file))
+              (datetime.now(), thread_index, len(files_in_shard), output_file))
         sys.stdout.flush()
-        shard_counter = 0
     print('%s [thread %d]: Wrote %d images to %d shards.' %
           (datetime.now(), thread_index, counter, num_files_in_thread))
     sys.stdout.flush()
@@ -192,7 +87,7 @@ def _process_image_files(attribute, image_files, num_shards):
     coord = tf.train.Coordinator()
 
     # Create a generic TensorFlow-based utility for converting all image codings.
-    coder = ImageCoder()
+    coder = utils.ImageCoder()
 
     threads = []
     for thread_index in range(len(ranges)):
@@ -228,17 +123,75 @@ def _process_dataset(attribute, num_shards):
     _process_image_files(attribute, image_files, num_shards)
 
 
+def _process_bbox_dataset(split_ratio=0.9):
+    image_files = []
+    bboxes = []
+    labels = []
+
+    images_top, bboxes_top = deepfashion.get_image_with_bbox('top,front')
+    image_files.append(images_top)
+    bboxes.append(bboxes_top)
+    labels.append([1] * len(bboxes_top))
+
+    images_bottom, bboxes_bottom = deepfashion.get_image_with_bbox('bottom,front')
+    image_files.append(images_bottom)
+    bboxes.append(bboxes_bottom)
+    labels.append([2] * len(bboxes_bottom))
+
+    image_files = list(itertools.chain.from_iterable(image_files))
+    bboxes = list(itertools.chain.from_iterable(bboxes))
+    labels = list(itertools.chain.from_iterable(labels))
+
+    assert len(image_files) == len(bboxes)
+    assert len(labels) == len(bboxes)
+    num_items = len(image_files)
+    indices = range(num_items)
+    random.shuffle(indices)
+
+    eval_start = int(num_items * split_ratio)
+
+    # Create a generic TensorFlow-based utility for converting all image codings.
+    coder = utils.ImageCoder()
+
+    # Write train file
+    train_file = os.path.join(FLAGS.output_directory, 'train_clothes.tfrecords')
+    train_writer = tf.python_io.TFRecordWriter(train_file)
+    _write_examples(train_writer, coder, image_files, indices[:eval_start], bboxes=bboxes, labels=labels)
+
+    # Write eval file
+    eval_file = os.path.join(FLAGS.output_directory, 'eval_clothes.tfrecords')
+    eval_writer = tf.python_io.TFRecordWriter(eval_file)
+    _write_examples(eval_writer, coder, image_files, indices[eval_start:], bboxes=bboxes, labels=labels)
+
+
+def _write_examples(writer, coder, filenames, indices, bboxes=None, labels=None):
+    for i in indices:
+        filename = filenames[i]
+
+        image_buffer, height, width = utils.process_image(filename, coder)
+
+        if bboxes is not None and labels is not None:
+            bbox = bboxes[i]
+            label = labels[i]
+            example = utils.convert_to_example(filename, image_buffer, height, width, bbox, label)
+        else:
+            example = utils.convert_to_example(filename, image_buffer, height, width)
+        writer.write(example.SerializeToString())
+
+
 def main(_):
     assert not FLAGS.num_shards % FLAGS.num_threads, (
         'Please make the FLAGS.num_threads commensurate with FLAGS.num_shards')
-    assert FLAGS.attributes, (
+    assert FLAGS.bound_box or FLAGS.attributes, (
         'FLAGS.attributes should be provided'
     )
     print 'Saving results to %s' % FLAGS.output_directory
 
     if not os.path.exists(FLAGS.output_directory):
         os.makedirs(FLAGS.output_directory)
-
+    if FLAGS.bound_box:
+        _process_bbox_dataset()
+        return
     attributes = FLAGS.attributes.split(',')
     for attribute in attributes:
         _process_dataset(attribute, FLAGS.num_shards)

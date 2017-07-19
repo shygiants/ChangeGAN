@@ -101,5 +101,10 @@ def append_path(dir, items, key='filename'):
     return map(lambda item: os.path.join(dir, item[key]), items)
 
 
+def bbox(items):
+    # ymin, xmin, ymax, xmax
+    return map(lambda item: [item['y_1'], item['x_1'], item['y_2'], item['x_2']], items)
+
+
 def merge(nested_list):
     return list(itertools.chain.from_iterable(nested_list))

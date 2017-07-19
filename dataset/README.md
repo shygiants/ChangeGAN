@@ -60,3 +60,13 @@ If you want to add more attributes, edit `_PREDEFINED_ATTR` and request pull.
 
 #### output_dir
 Directory to save TFRecord files
+
+
+----
+#### Bound Box
+
+```bash
+$ python builder.py \
+--bound_box \
+--output_dir=/dir/output
+```
