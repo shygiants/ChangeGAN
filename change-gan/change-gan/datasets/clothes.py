@@ -8,6 +8,7 @@ _FILE_PATTERN = '%s-*'
 
 _ITEMS_TO_DESCRIPTIONS = {
     'image': 'A color image of varying height and width.',
+    'object/bbox': 'A list of bounding boxes.',
 }
 
 _DOMAINS_TO_SIZES = {
@@ -32,10 +33,20 @@ def get_dataset(domain_name, dataset_dir, file_pattern=None, reader=None):
             (), tf.string, default_value=''),
         'image/format': tf.FixedLenFeature(
             (), tf.string, default_value='jpeg'),
+        'image/object/bbox/xmin': tf.VarLenFeature(
+            dtype=tf.float32),
+        'image/object/bbox/ymin': tf.VarLenFeature(
+            dtype=tf.float32),
+        'image/object/bbox/xmax': tf.VarLenFeature(
+            dtype=tf.float32),
+        'image/object/bbox/ymax': tf.VarLenFeature(
+            dtype=tf.float32),
     }
 
     items_to_handlers = {
         'image': slim.tfexample_decoder.Image('image/encoded', 'image/format'),
+        'object/bbox': slim.tfexample_decoder.BoundingBox(
+            ['ymin', 'xmin', 'ymax', 'xmax'], 'image/object/bbox/'),
     }
 
     decoder = slim.tfexample_decoder.TFExampleDecoder(
