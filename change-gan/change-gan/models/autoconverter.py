@@ -37,7 +37,6 @@ def model_fn(inputs_a, inputs_b, learning_rate, is_training=True, scope=None, we
                 ####################
                 outputs_a_a, outputs_b_b = autoencoder(inputs_a, inputs_b)
 
-                # TODO: Decide whether the outputs of autoencoder are fed to discriminator
                 logits_a_a_fake, probs_a_a_fake = discriminator(outputs_a_a, encoder_dims, scope='Discriminator_A')
                 logits_b_b_fake, probs_b_b_fake = discriminator(outputs_b_b, encoder_dims, scope='Discriminator_B')
 

@@ -7,7 +7,7 @@ from utils import merge
 import tensorflow as tf
 
 config = ConfigParser.ConfigParser()
-config.read('config/config.conf')
+config.read(os.path.join(os.path.dirname(__file__), 'config/config.conf'))
 
 
 def get_image_files(attrs):
