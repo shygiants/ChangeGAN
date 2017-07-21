@@ -149,13 +149,13 @@ def run(target,
         evaluation_graph = tf.Graph()
         with evaluation_graph.as_default():
             # Inputs
-            images_a, images_b = change_gan.input_fn(
+            images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b = change_gan.input_fn(
                 eval_dataset_a, eval_dataset_b,
                 batch_size=eval_batch_size, is_training=False)
 
             # Model
             outputs = change_gan.model_fn(
-                images_a, images_b, learning_rate, is_training=False)
+                images_a, images_b, bbox_channels_a, bbox_channels_b, learning_rate, is_training=False)
 
         hooks = [EvaluationRunHook(
             job_dir,
@@ -176,13 +176,13 @@ def run(target,
         with tf.device(tf.train.replica_device_setter()):
             model = models_factory.get_model(model_name)
             # Inputs
-            images_a, images_b = model.input_fn(
+            images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b = model.input_fn(
                 train_dataset_a, train_dataset_b,
                 batch_size=train_batch_size, is_training=True)
 
             # Model
             train_op, global_step, outputs = model.model_fn(
-                images_a, images_b, learning_rate, is_training=True)
+                images_a, images_b, bbox_channels_a, bbox_channels_b, learning_rate, is_training=True)
 
         # Creates a MonitoredSession for training
         # MonitoredSession is a Session-like object that handles

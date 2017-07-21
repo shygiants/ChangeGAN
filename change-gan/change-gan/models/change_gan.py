@@ -10,7 +10,7 @@ slim = tf.contrib.slim
 default_image_size = 256
 
 
-def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, scope=None, weight_decay=0.0001):
+def model_fn(inputs_a, inputs_b, bbox_channels_a, bbox_channels_b, learning_rate, num_blocks=9, is_training=True, scope=None, weight_decay=0.0001):
     encoder_dims = [32, 64, 128]
     deep_encoder_dims = [64, 128, 256]
     decoder_dims = [64, 32, 3]
@@ -64,15 +64,23 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
 
                     return outputs_a
 
-                outputs_ab, z_a_b = converter_ab(inputs_a)
-                outputs_ba = converter_ba(inputs_b, z_a_b)
-                outputs_bab, _ = converter_ab(outputs_ba, reuse=True)
-                outputs_aba = converter_ba(outputs_ab, z_a_b, reuse=True)
+                # Add 4th channel
+                inputs_bbox_a = tf.concat([inputs_a, bbox_channels_a], 3)
+                inputs_bbox_b = tf.concat([inputs_b, bbox_channels_b], 3)
 
-                logits_a_real, probs_a_real = discriminator(inputs_a, deep_encoder_dims, scope='Discriminator_A')
-                logits_a_fake, probs_a_fake = discriminator(outputs_ba, deep_encoder_dims, scope='Discriminator_A', reuse=True)
-                logits_b_real, probs_b_real = discriminator(inputs_b, deep_encoder_dims, scope='Discriminator_B')
-                logits_b_fake, probs_b_fake = discriminator(outputs_ab, deep_encoder_dims, scope='Discriminator_B', reuse=True)
+                outputs_ab, z_a_b = converter_ab(inputs_bbox_a)
+                outputs_bbox_ab = tf.concat([outputs_ab, bbox_channels_a], 3)
+                # TODO: Resize input of b
+                outputs_ba = converter_ba(inputs_bbox_b, z_a_b)
+                outputs_bbox_ba = tf.concat([outputs_ba, bbox_channels_a], 3)
+
+                outputs_bab, _ = converter_ab(outputs_bbox_ba, reuse=True)
+                outputs_aba = converter_ba(outputs_bbox_ab, z_a_b, reuse=True)
+
+                logits_a_real, probs_a_real = discriminator(inputs_bbox_a, deep_encoder_dims, scope='Discriminator_A')
+                logits_a_fake, probs_a_fake = discriminator(outputs_bbox_ba, deep_encoder_dims, scope='Discriminator_A', reuse=True)
+                logits_b_real, probs_b_real = discriminator(inputs_bbox_b, deep_encoder_dims, scope='Discriminator_B')
+                logits_b_fake, probs_b_fake = discriminator(outputs_bbox_ab, deep_encoder_dims, scope='Discriminator_B', reuse=True)
 
                 outputs = [outputs_ba, outputs_ab, outputs_aba, outputs_bab]
 
@@ -163,30 +171,67 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
         num_readers=num_readers,
         common_queue_capacity=20 * batch_size,
         common_queue_min=10 * batch_size)
-    [image_a] = provider_a.get(['image'])
-    [image_b] = provider_b.get(['image'])
+    [image_a, bbox_a] = provider_a.get(['image', 'object/bbox'])
+    [image_b, bbox_b] = provider_b.get(['image', 'object/bbox'])
 
     train_image_size = default_image_size
 
-    image_a = _preprocess_image(image_a, train_image_size, train_image_size, is_training=is_training)
-    image_b = _preprocess_image(image_b, train_image_size, train_image_size, is_training=is_training)
+    def bbox_to_channel(image, bbox):
+        ymin = bbox[0]
+        xmin = bbox[1]
+        ymax = bbox[2]
+        xmax = bbox[3]
 
-    images_a, images_b = tf.train.batch(
-        [image_a, image_b],
+        image_shape = tf.to_float(tf.shape(image))
+        height = image_shape[0]
+        width = image_shape[1]
+
+        bbox_height = (ymax - ymin) * height
+        bbox_width = (xmax - xmin) * width
+        channel = tf.ones(tf.to_int32(tf.stack([bbox_height, bbox_width])))
+        channel = tf.expand_dims(channel, axis=2)
+
+        pad_top = tf.to_int32((1. - ymax) * height)
+        pad_left = tf.to_int32(xmin * width)
+        height = tf.to_int32(height)
+        width = tf.to_int32(width)
+        channel = tf.image.pad_to_bounding_box(channel, pad_top, pad_left, height, width)
+
+        return channel
+
+    bbox_a = tf.squeeze(bbox_a, axis=0)
+    bbox_b = tf.squeeze(bbox_b, axis=0)
+    bbox_channel_a = bbox_to_channel(image_a, bbox_a)
+    bbox_channel_b = bbox_to_channel(image_b, bbox_b)
+
+    image_a, bbox_channel_a = _preprocess_image(image_a, bbox_channel_a, train_image_size, train_image_size, is_training=is_training)
+    image_b, bbox_channel_b = _preprocess_image(image_b, bbox_channel_b, train_image_size, train_image_size, is_training=is_training)
+
+    images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b = tf.train.batch(
+        [image_a, image_b, bbox_a, bbox_b, bbox_channel_a, bbox_channel_b],
         batch_size=batch_size,
         num_threads=multiprocessing.cpu_count(),
         capacity=5 * batch_size)
 
     batch_queue = slim.prefetch_queue.prefetch_queue(
-        [images_a, images_b], capacity=2)
-    images_a, images_b = batch_queue.dequeue()
+        [images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b], capacity=2)
+    images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b = batch_queue.dequeue()
 
-    return images_a, images_b
+    with tf.name_scope('inputs'):
+        tf.summary.image('X_A', images_a)
+        tf.summary.image('X_A_BBox', tf.image.draw_bounding_boxes(images_a, tf.expand_dims(bboxes_a, axis=1)))
+        tf.summary.image('X_B', images_b)
+        tf.summary.image('X_B_BBox', tf.image.draw_bounding_boxes(images_b, tf.expand_dims(bboxes_b, axis=1)))
+
+    return images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b
 
 
-def _preprocess_image(image, height, width, is_training=True):
+def _preprocess_image(image, bbox_channel, height, width, is_training=True):
     if image.dtype != tf.float32:
         image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+
+    # Depth concat
+    image = tf.concat([image, bbox_channel], 2)
 
     # Central square crop and resize
     shape = tf.to_float(tf.shape(image))
@@ -202,4 +247,6 @@ def _preprocess_image(image, height, width, is_training=True):
     image = tf.subtract(image, 0.5)
     image = tf.multiply(image, 2.0)
 
-    return image
+    image, bbox_channel = tf.split(image, [3, 1], axis=2)
+
+    return image, bbox_channel
