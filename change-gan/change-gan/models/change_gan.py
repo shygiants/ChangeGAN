@@ -86,7 +86,9 @@ def model_fn(inputs_a, inputs_b, bbox_channels_a, bbox_channels_b, learning_rate
 
     with tf.name_scope('images'):
         tf.summary.image('X_A', inputs_a)
+        tf.summary.image('X_A_BBox', inputs_bbox_a)
         tf.summary.image('X_B', inputs_b)
+        tf.summary.image('X_B_BBox', inputs_bbox_b)
         tf.summary.image('X_BA', outputs_ba)
         tf.summary.image('X_AB', outputs_ab)
         tf.summary.image('X_ABA', outputs_aba)
@@ -191,7 +193,7 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
         channel = tf.ones(tf.to_int32(tf.stack([bbox_height, bbox_width])))
         channel = tf.expand_dims(channel, axis=2)
 
-        pad_top = tf.to_int32((1. - ymax) * height)
+        pad_top = tf.to_int32(ymin * height)
         pad_left = tf.to_int32(xmin * width)
         height = tf.to_int32(height)
         width = tf.to_int32(width)
