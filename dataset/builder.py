@@ -33,6 +33,8 @@ tf.app.flags.DEFINE_integer('num_threads', 8,
                             'Number of threads to preprocess the images.')
 tf.app.flags.DEFINE_integer('num_images', None,
                             'Number of images to convert.')
+tf.app.flags.DEFINE_string('ssd_graph_path', None,
+                           'Path of SSD graph')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -87,7 +89,7 @@ def _process_image_files(attribute, image_files, num_shards):
     coord = tf.train.Coordinator()
 
     # Create a generic TensorFlow-based utility for converting all image codings.
-    coder = utils.ImageCoder()
+    coder = utils.ImageCoder(ssd_graph_path=FLAGS.ssd_graph_path)
 
     threads = []
     for thread_index in range(len(ranges)):
@@ -170,7 +172,28 @@ def _write_examples(writer, coder, filenames, indices, bboxes=None, labels=None)
 
         image_buffer, height, width = utils.process_image(filename, coder)
 
-        if bboxes is not None and labels is not None:
+        if FLAGS.ssd_graph_path is not None:
+            box, score, clazz = utils.detect_objects(image_buffer, coder)
+
+            if False:
+                # Browse the results of object detection
+                from PIL import Image, ImageDraw
+                im = Image.open(filename)
+
+                im_width, im_height = im.size
+                ymin, xmin, ymax, xmax = box
+                (left, right, top, bottom) = (xmin * im_width, xmax * im_width,
+                                              ymin * im_height, ymax * im_height)
+
+                draw = ImageDraw.Draw(im)
+                draw.line([(left, top), (left, bottom), (right, bottom),
+                           (right, top), (left, top)], width=4, fill='red')
+                del draw
+
+                im.save(os.path.join('/Users/SHYBookPro/Desktop/bbxes', os.path.basename(filename)), "PNG")
+            example = utils.convert_to_example(filename, image_buffer, height, width, box, int(clazz),
+                                               bbox_normalize=True)
+        elif bboxes is not None and labels is not None:
             bbox = bboxes[i]
             label = labels[i]
             example = utils.convert_to_example(filename, image_buffer, height, width, bbox, label)

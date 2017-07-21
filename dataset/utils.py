@@ -5,6 +5,7 @@ from __future__ import division
 import os
 
 import tensorflow as tf
+import numpy as np
 
 
 def int64_feature(value):
@@ -28,7 +29,7 @@ def bytes_feature(value):
 _classes_text = ['Top', 'Bottom']
 
 
-def convert_to_example(filename, image_buffer, height, width, bbox=None, label=None):
+def convert_to_example(filename, image_buffer, height, width, bbox=None, label=None, bbox_normalize=False):
     colorspace = 'RGB'
     channels = 3
     image_format = 'JPEG'
@@ -46,10 +47,11 @@ def convert_to_example(filename, image_buffer, height, width, bbox=None, label=N
         image_format = b'jpg'
 
         ymin, xmin, ymax, xmax = bbox
-        xmin /= width
-        xmax /= width
-        ymin /= height
-        ymax /= height
+        if not bbox_normalize:
+            xmin /= width
+            xmax /= width
+            ymin /= height
+            ymax /= height
 
         label_text = _classes_text[label - 1]
 
@@ -74,9 +76,33 @@ def convert_to_example(filename, image_buffer, height, width, bbox=None, label=N
 class ImageCoder(object):
     """Helper class that provides TensorFlow image coding utilities."""
 
-    def __init__(self):
+    def __init__(self, ssd_graph_path=None):
         # Create a single Session to run all image coding calls.
         self._sess = tf.Session()
+
+        if ssd_graph_path is not None:
+            od_graph_def = tf.GraphDef()
+            with tf.gfile.GFile(ssd_graph_path, 'rb') as fid:
+                serialized_graph = fid.read()
+                od_graph_def.ParseFromString(serialized_graph)
+                tf.import_graph_def(od_graph_def, name='')
+
+            # TODO: Label
+            # label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
+            # categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES,
+            #                                                             use_display_name=True)
+            # category_index = label_map_util.create_category_index(categories)
+
+            detection_graph = self._sess.graph
+            self._encoded_image = detection_graph.get_tensor_by_name('encoded_image_string_tensor:0')
+            # Each box represents a part of the image where a particular object was detected.
+            boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+            # Each score represent how level of confidence for each of the objects.
+            # Score is shown on the result image, together with the class label.
+            scores = detection_graph.get_tensor_by_name('detection_scores:0')
+            classes = detection_graph.get_tensor_by_name('detection_classes:0')
+            num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+            self._detect_objects = [boxes, scores, classes, num_detections]
 
         # Initializes function that converts PNG to JPEG data.
         self._png_data = tf.placeholder(dtype=tf.string)
@@ -107,6 +133,20 @@ class ImageCoder(object):
         assert image.shape[2] == 3
         return image
 
+    def detect_objects(self, image_data):
+        outputs = self._sess.run(
+            self._detect_objects, feed_dict={self._encoded_image: image_data})
+        outputs = map(np.squeeze, outputs[:3])
+
+        # TODO: General
+        # Filter only tops
+        classes = outputs[2]
+        indices = classes == 1
+        outputs = map(lambda l: l[indices], outputs)
+        [box, score, class_] = map(lambda l: l[0], outputs)
+
+        return box, score, class_
+
 
 def process_image(filename, coder):
     # Read the image file.
@@ -133,3 +173,7 @@ def process_image(filename, coder):
     assert image.shape[2] == 3
 
     return image_data, height, width
+
+
+def detect_objects(image_data, coder):
+    return coder.detect_objects(image_data)
