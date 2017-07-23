@@ -205,6 +205,7 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
     # [Num of boxes, 4] => [4]
     bbox_a = tf.squeeze(bbox_a, axis=0)
     bbox_b = tf.squeeze(bbox_b, axis=0)
+    # Add bound box as 4th channel
     image_a = add_channel(image_a, bbox_a)
     image_b = add_channel(image_b, bbox_b)
 
@@ -215,28 +216,35 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
     ratio = image_space_a.bbox_height / image_space_b.bbox_height
     image_space_b.resize(ratio)
 
-    # Crop image B if needed
+    # Shift image B to fit bboxes of two images
     pixel_shift = image_space_a.translate2pxl(image_space_a.bbox_center) - \
                   image_space_b.translate2pxl(image_space_b.bbox_center)
 
-    crop_top = tf.less_equal(pixel_shift[0], 0)
-    pad_y = tf.cond(crop_top, true_fn=lambda: 0, false_fn=lambda: pixel_shift[0] - 1)
-    crop_ymin = tf.cond(crop_top, true_fn=lambda: image_space_b.translate2coor(pixel_y=pad_y), false_fn=lambda: 0.)
-    crop_ymin = tf.Print(crop_ymin, [crop_ymin], 'crop_ymin')
-    crop_left = tf.less_equal(pixel_shift[1], 0)
-    pad_x = tf.cond(crop_left, true_fn=lambda: 0, false_fn=lambda: pixel_shift[1] - 1)
-    crop_xmin = tf.cond(crop_left, true_fn=lambda: image_space_b.translate2coor(pixel_x=pad_x), false_fn=lambda: 0.)
-    crop_xmin = tf.Print(crop_xmin, [crop_xmin], 'crop_xmin')
+    # Calculate ymin and xmin
+    crop_top = tf.less(pixel_shift[0], 0)
+    pad_y = tf.cond(crop_top, true_fn=lambda: 0, false_fn=lambda: pixel_shift[0])
+    crop_ymin = tf.cond(crop_top,
+                        true_fn=lambda: image_space_b.translate2coor(pixel_y=tf.negative(pixel_shift[0])),
+                        false_fn=lambda: 0.)
+    crop_left = tf.less(pixel_shift[1], 0)
+    pad_x = tf.cond(crop_left, true_fn=lambda: 0, false_fn=lambda: pixel_shift[1])
+    crop_xmin = tf.cond(crop_left,
+                        true_fn=lambda: image_space_b.translate2coor(pixel_x=tf.negative(pixel_shift[1])),
+                        false_fn=lambda: 0.)
 
+    # Calculate ymax and xmax
     over_y = pixel_shift[0] + image_space_b.height - image_space_a.height
     crop_bottom = tf.greater(over_y, 0)
-    crop_ymax = tf.cond(crop_bottom, true_fn=lambda: 1. - image_space_b.translate2coor(pixel_y=over_y), false_fn=lambda: 1.)
-    crop_ymax = tf.Print(crop_ymax, [crop_ymax], 'crop_ymax')
+    crop_ymax = tf.cond(crop_bottom,
+                        true_fn=lambda: 1. - image_space_b.translate2coor(pixel_y=over_y),
+                        false_fn=lambda: 1.)
     over_x = pixel_shift[1] + image_space_b.width - image_space_a.width
     crop_right = tf.greater(over_x, 0)
-    crop_xmax = tf.cond(crop_right, true_fn=lambda: 1. - image_space_b.translate2coor(pixel_x=over_x), false_fn=lambda: 1.)
-    crop_xmax = tf.Print(crop_xmax, [crop_xmax], 'crop_xmax')
+    crop_xmax = tf.cond(crop_right,
+                        true_fn=lambda: 1. - image_space_b.translate2coor(pixel_x=over_x),
+                        false_fn=lambda: 1.)
 
+    # Resize, Crop, Pad
     image_b_cropped = image_space_b.crop(crop_ymin, crop_xmin, crop_ymax, crop_xmax)
     image_b = tf.image.pad_to_bounding_box(image_b_cropped, pad_y, pad_x, image_space_a.height, image_space_a.width)
     image_b_like = tf.image.pad_to_bounding_box(
@@ -245,6 +253,7 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
     # TODO: Decide pad one or zero
     image_b = image_b + image_b_like
 
+    # Preprocess images
     image_a = _preprocess_image(image_a, train_image_size, train_image_size, is_training=is_training)
     image_b = _preprocess_image(image_b, train_image_size, train_image_size, is_training=is_training)
 
