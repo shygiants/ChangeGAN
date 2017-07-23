@@ -10,7 +10,7 @@ slim = tf.contrib.slim
 default_image_size = 256
 
 
-def model_fn(inputs_a, inputs_b, bbox_channels_a, bbox_channels_b, learning_rate, num_blocks=9, is_training=True, scope=None, weight_decay=0.0001):
+def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, scope=None, weight_decay=0.0001):
     encoder_dims = [32, 64, 128]
     deep_encoder_dims = [64, 128, 256]
     decoder_dims = [64, 32, 3]
@@ -64,31 +64,26 @@ def model_fn(inputs_a, inputs_b, bbox_channels_a, bbox_channels_b, learning_rate
 
                     return outputs_a
 
-                # Add 4th channel
-                inputs_bbox_a = tf.concat([inputs_a, bbox_channels_a], 3)
-                inputs_bbox_b = tf.concat([inputs_b, bbox_channels_b], 3)
+                bbox_channel_a = _get_bbox(inputs_a)
 
-                outputs_ab, z_a_b = converter_ab(inputs_bbox_a)
-                outputs_bbox_ab = tf.concat([outputs_ab, bbox_channels_a], 3)
-                # TODO: Resize input of b
-                outputs_ba = converter_ba(inputs_bbox_b, z_a_b)
-                outputs_bbox_ba = tf.concat([outputs_ba, bbox_channels_a], 3)
+                outputs_ab, z_a_b = converter_ab(inputs_a)
+                outputs_bbox_ab = tf.concat([outputs_ab, bbox_channel_a], 3)
+                outputs_ba = converter_ba(inputs_b, z_a_b)
+                outputs_bbox_ba = tf.concat([outputs_ba, bbox_channel_a], 3)
 
                 outputs_bab, _ = converter_ab(outputs_bbox_ba, reuse=True)
                 outputs_aba = converter_ba(outputs_bbox_ab, z_a_b, reuse=True)
 
-                logits_a_real, probs_a_real = discriminator(inputs_bbox_a, deep_encoder_dims, scope='Discriminator_A')
+                logits_a_real, probs_a_real = discriminator(inputs_a, deep_encoder_dims, scope='Discriminator_A')
                 logits_a_fake, probs_a_fake = discriminator(outputs_bbox_ba, deep_encoder_dims, scope='Discriminator_A', reuse=True)
-                logits_b_real, probs_b_real = discriminator(inputs_bbox_b, deep_encoder_dims, scope='Discriminator_B')
+                logits_b_real, probs_b_real = discriminator(inputs_b, deep_encoder_dims, scope='Discriminator_B')
                 logits_b_fake, probs_b_fake = discriminator(outputs_bbox_ab, deep_encoder_dims, scope='Discriminator_B', reuse=True)
 
                 outputs = [outputs_ba, outputs_ab, outputs_aba, outputs_bab]
 
     with tf.name_scope('images'):
-        tf.summary.image('X_A', inputs_a)
-        tf.summary.image('X_A_BBox', inputs_bbox_a)
-        tf.summary.image('X_B', inputs_b)
-        tf.summary.image('X_B_BBox', inputs_bbox_b)
+        tf.summary.image('X_A', _remove_bbox(inputs_a))
+        tf.summary.image('X_B', _remove_bbox(inputs_b))
         tf.summary.image('X_BA', outputs_ba)
         tf.summary.image('X_AB', outputs_ab)
         tf.summary.image('X_ABA', outputs_aba)
@@ -132,8 +127,8 @@ def model_fn(inputs_a, inputs_b, bbox_channels_a, bbox_channels_b, learning_rate
     # Losses for generators
     l_g_a = tf.reduce_mean(tf.squared_difference(logits_a_fake, 1.))
     l_g_b = tf.reduce_mean(tf.squared_difference(logits_b_fake, 1.))
-    l_const_a = tf.reduce_mean(tf.losses.absolute_difference(inputs_a, outputs_aba))
-    l_const_b = tf.reduce_mean(tf.losses.absolute_difference(inputs_b, outputs_bab))
+    l_const_a = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_a), outputs_aba))
+    l_const_b = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_b), outputs_bab))
 
     l_g = l_g_a + l_g_b + 10. * (l_const_a + l_const_b)
     train_op_g = tf.train.AdamOptimizer(
@@ -178,7 +173,7 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
 
     train_image_size = default_image_size
 
-    def bbox_to_channel(image, bbox):
+    def add_channel(image, bbox):
         ymin = bbox[0]
         xmin = bbox[1]
         ymax = bbox[2]
@@ -198,42 +193,83 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
         height = tf.to_int32(height)
         width = tf.to_int32(width)
         channel = tf.image.pad_to_bounding_box(channel, pad_top, pad_left, height, width)
+        # TODO: Decide pad one or zero
+        channel = tf.ones_like(channel) - channel
 
-        return channel
+        image = tf.concat([image, channel], axis=2)
 
+        return image
+
+    image_a = tf.image.convert_image_dtype(image_a, dtype=tf.float32)
+    image_b = tf.image.convert_image_dtype(image_b, dtype=tf.float32)
+    # [Num of boxes, 4] => [4]
     bbox_a = tf.squeeze(bbox_a, axis=0)
     bbox_b = tf.squeeze(bbox_b, axis=0)
-    bbox_channel_a = bbox_to_channel(image_a, bbox_a)
-    bbox_channel_b = bbox_to_channel(image_b, bbox_b)
+    image_a = add_channel(image_a, bbox_a)
+    image_b = add_channel(image_b, bbox_b)
 
-    image_a, bbox_channel_a = _preprocess_image(image_a, bbox_channel_a, train_image_size, train_image_size, is_training=is_training)
-    image_b, bbox_channel_b = _preprocess_image(image_b, bbox_channel_b, train_image_size, train_image_size, is_training=is_training)
+    image_space_a = Image(image_a, bbox_a)
+    image_space_b = Image(image_b, bbox_b)
 
-    images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b = tf.train.batch(
-        [image_a, image_b, bbox_a, bbox_b, bbox_channel_a, bbox_channel_b],
+    # Resize image B
+    ratio = image_space_a.bbox_height / image_space_b.bbox_height
+    image_space_b.resize(ratio)
+
+    # Crop image B if needed
+    pixel_shift = image_space_a.translate2pxl(image_space_a.bbox_center) - \
+                  image_space_b.translate2pxl(image_space_b.bbox_center)
+
+    crop_top = tf.less_equal(pixel_shift[0], 0)
+    pad_y = tf.cond(crop_top, true_fn=lambda: 0, false_fn=lambda: pixel_shift[0] - 1)
+    crop_ymin = tf.cond(crop_top, true_fn=lambda: image_space_b.translate2coor(pixel_y=pad_y), false_fn=lambda: 0.)
+    crop_ymin = tf.Print(crop_ymin, [crop_ymin], 'crop_ymin')
+    crop_left = tf.less_equal(pixel_shift[1], 0)
+    pad_x = tf.cond(crop_left, true_fn=lambda: 0, false_fn=lambda: pixel_shift[1] - 1)
+    crop_xmin = tf.cond(crop_left, true_fn=lambda: image_space_b.translate2coor(pixel_x=pad_x), false_fn=lambda: 0.)
+    crop_xmin = tf.Print(crop_xmin, [crop_xmin], 'crop_xmin')
+
+    over_y = pixel_shift[0] + image_space_b.height - image_space_a.height
+    crop_bottom = tf.greater(over_y, 0)
+    crop_ymax = tf.cond(crop_bottom, true_fn=lambda: 1. - image_space_b.translate2coor(pixel_y=over_y), false_fn=lambda: 1.)
+    crop_ymax = tf.Print(crop_ymax, [crop_ymax], 'crop_ymax')
+    over_x = pixel_shift[1] + image_space_b.width - image_space_a.width
+    crop_right = tf.greater(over_x, 0)
+    crop_xmax = tf.cond(crop_right, true_fn=lambda: 1. - image_space_b.translate2coor(pixel_x=over_x), false_fn=lambda: 1.)
+    crop_xmax = tf.Print(crop_xmax, [crop_xmax], 'crop_xmax')
+
+    image_b_cropped = image_space_b.crop(crop_ymin, crop_xmin, crop_ymax, crop_xmax)
+    image_b = tf.image.pad_to_bounding_box(image_b_cropped, pad_y, pad_x, image_space_a.height, image_space_a.width)
+    image_b_like = tf.image.pad_to_bounding_box(
+        tf.ones_like(image_b_cropped), pad_y, pad_x, image_space_a.height, image_space_a.width)
+    image_b_like = tf.ones_like(image_b_like) - image_b_like
+    # TODO: Decide pad one or zero
+    image_b = image_b + image_b_like
+
+    image_a = _preprocess_image(image_a, train_image_size, train_image_size, is_training=is_training)
+    image_b = _preprocess_image(image_b, train_image_size, train_image_size, is_training=is_training)
+
+    images_a, images_b, bboxes_a, bboxes_b = tf.train.batch(
+        [image_a, image_b, bbox_a, bbox_b],
         batch_size=batch_size,
         num_threads=multiprocessing.cpu_count(),
         capacity=5 * batch_size)
 
     batch_queue = slim.prefetch_queue.prefetch_queue(
-        [images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b], capacity=2)
-    images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b = batch_queue.dequeue()
+        [images_a, images_b, bboxes_a, bboxes_b], capacity=2)
+    images_a, images_b, bboxes_a, bboxes_b = batch_queue.dequeue()
 
     with tf.name_scope('inputs'):
-        tf.summary.image('X_A', images_a)
-        tf.summary.image('X_A_BBox', tf.image.draw_bounding_boxes(images_a, tf.expand_dims(bboxes_a, axis=1)))
-        tf.summary.image('X_B', images_b)
-        tf.summary.image('X_B_BBox', tf.image.draw_bounding_boxes(images_b, tf.expand_dims(bboxes_b, axis=1)))
+        tf.summary.image('X_A', _remove_bbox(images_a))
+        tf.summary.image('X_A_BBox', images_a)
+        tf.summary.image('X_B', _remove_bbox(images_b))
+        tf.summary.image('X_B_BBox', images_b)
 
-    return images_a, images_b, bboxes_a, bboxes_b, bbox_channels_a, bbox_channels_b
+    return images_a, images_b, bboxes_a, bboxes_b
 
 
-def _preprocess_image(image, bbox_channel, height, width, is_training=True):
+def _preprocess_image(image, height, width, is_training=True):
     if image.dtype != tf.float32:
         image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-
-    # Depth concat
-    image = tf.concat([image, bbox_channel], 2)
 
     # Central square crop and resize
     shape = tf.to_float(tf.shape(image))
@@ -249,6 +285,117 @@ def _preprocess_image(image, bbox_channel, height, width, is_training=True):
     image = tf.subtract(image, 0.5)
     image = tf.multiply(image, 2.0)
 
-    image, bbox_channel = tf.split(image, [3, 1], axis=2)
+    return image
 
-    return image, bbox_channel
+
+def _split_image_bbox(image_bbox):
+    image, bbox = tf.split(image_bbox, [3, 1], axis=image_bbox.shape.ndims - 1)
+    return image, bbox
+
+
+def _remove_bbox(image_bbox):
+    image, bbox = _split_image_bbox(image_bbox)
+    return image
+
+
+def _get_bbox(image_bbox):
+    image, bbox = _split_image_bbox(image_bbox)
+    return bbox
+
+
+class Image:
+    def __init__(self, image, bbox):
+        self._image = image
+        self._image_shape = tf.to_float(tf.shape(image))
+        self._height = self._image_shape[0]
+        self._width = self._image_shape[1]
+
+        self._ratio = None
+
+        self._bbox = bbox
+        self._ymin = bbox[0]
+        self._xmin = bbox[1]
+        self._ymax = bbox[2]
+        self._xmax = bbox[3]
+        self._bbox_height = (self._ymax - self._ymin) * self._height
+        self._bbox_width = (self._xmax - self._xmin) * self._width
+
+        self._center_y = (self._ymin + self._ymax) / 2.
+        self._center_x = (self._xmin + self._xmax) / 2.
+
+
+    @property
+    def image(self):
+        return self._image
+
+    @property
+    def height(self):
+        height = self._height
+        if self._ratio is not None:
+            height *= self._ratio
+        return tf.to_int32(height)
+
+    @property
+    def width(self):
+        width = self._width
+        if self._ratio is not None:
+            width *= self._ratio
+        return tf.to_int32(width)
+
+    @property
+    def bbox_height(self):
+        return self._bbox_height
+
+    @property
+    def bbox_center(self):
+        return tf.stack([self._center_y, self._center_x])
+
+    def resize(self, ratio):
+        self._ratio = ratio
+
+    def translate2pxl(self, coor):
+        if coor.dtype != tf.float32:
+            coor = tf.to_float(coor)
+        pixel = coor * self._image_shape[:2]
+        if self._ratio is not None:
+            pixel *= self._ratio
+        return tf.to_int32(pixel)
+
+    def translate2coor(self, pixel_y=None, pixel_x=None):
+        if pixel_y is None and pixel_x is None:
+            raise ValueError
+        if pixel_y is not None and pixel_x is not None:
+            raise ValueError
+
+        divisor = self._image_shape[0 if pixel_y is not None else 1]
+        pixel = pixel_y if pixel_y is not None else pixel_x
+
+        if pixel.dtype != tf.float32:
+            pixel = tf.to_float(pixel)
+
+        if self._ratio is not None:
+            divisor *= self._ratio
+        coor = pixel / divisor
+        return coor
+
+    def crop(self, ymin, xmin, ymax, xmax):
+        image = self._image
+        if self._ratio is not None:
+            target_shape = tf.to_int32(self._image_shape[:2] * self._ratio)
+            image = tf.image.resize_images(image, target_shape)
+
+        shape = tf.to_float(tf.shape(image))
+        height = shape[0]
+        width = shape[1]
+
+        offset_height = tf.to_int32(ymin * height)
+        offset_width = tf.to_int32(xmin * width)
+        target_height = tf.to_int32((ymax - ymin) * height)
+        target_width = tf.to_int32((xmax - xmin) * width)
+        image = tf.image.crop_to_bounding_box(image,
+                                              offset_height,
+                                              offset_width,
+                                              target_height,
+                                              target_width)
+
+        return image
