@@ -247,12 +247,27 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
 
     # Resize, Crop, Pad
     image_b_cropped = image_space_b.crop(crop_ymin, crop_xmin, crop_ymax, crop_xmax)
-    image_b = tf.image.pad_to_bounding_box(image_b_cropped, pad_y, pad_x, image_space_a.height, image_space_a.width)
-    image_b_like = tf.image.pad_to_bounding_box(
-        tf.ones_like(image_b_cropped), pad_y, pad_x, image_space_a.height, image_space_a.width)
-    image_b_like = tf.ones_like(image_b_like) - image_b_like
-    # TODO: Decide pad one or zero
-    image_b = image_b + image_b_like
+
+    def pad_to_bounding_box(image):
+        return tf.image.pad_to_bounding_box(image, pad_y, pad_x, image_space_a.height, image_space_a.width)
+
+    # Pad differently depending on type of channel
+    image_b_cropped, bbox_channel = _split_image_bbox(image_b_cropped)
+
+    # One padding for RGB
+    rgb_padding = pad_to_bounding_box(tf.ones_like(image_b_cropped))
+    rgb_padding = tf.ones_like(rgb_padding) - rgb_padding
+    # Sample background color and pad
+    rgb_padding *= image_b_cropped[0, 0]
+
+    # Pad for RGB
+    image_b = pad_to_bounding_box(image_b_cropped) + rgb_padding
+
+    # Zero padding for bbox channel
+    bbox_channel = pad_to_bounding_box(bbox_channel)
+
+    # Concat RGB and bbox channel
+    image_b = tf.concat([image_b, bbox_channel], axis=2)
 
     # Preprocess images
     image_a = _preprocess_image(image_a, train_image_size, train_image_size, is_training=is_training)
