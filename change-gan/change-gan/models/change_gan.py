@@ -173,7 +173,7 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
 
     train_image_size = default_image_size
 
-    def add_channel(image, bbox):
+    def add_channel(image, bbox, padding='ZERO'):
         ymin = bbox[0]
         xmin = bbox[1]
         ymax = bbox[2]
@@ -194,7 +194,8 @@ def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True
         width = tf.to_int32(width)
         channel = tf.image.pad_to_bounding_box(channel, pad_top, pad_left, height, width)
         # TODO: Decide pad one or zero
-        channel = tf.ones_like(channel) - channel
+        if padding == 'ONE':
+            channel = tf.ones_like(channel) - channel
 
         image = tf.concat([image, channel], axis=2)
 
