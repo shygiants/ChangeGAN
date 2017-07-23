@@ -91,7 +91,7 @@ class EvaluationRunHook(tf.train.SessionRunHook):
                 tf.tables_initializer(),
                 tf.local_variables_initializer()
             ])
-            tf.train.start_queue_runners(coord=coord, sess=session)
+            threads = tf.train.start_queue_runners(coord=coord, sess=session)
             train_step = session.run(self._gs)
 
             tf.logging.info('Starting Evaluation For Step: {}'.format(train_step))
@@ -108,6 +108,9 @@ class EvaluationRunHook(tf.train.SessionRunHook):
             # Write the summaries
             self._file_writer.add_summary(summaries, global_step=train_step)
             self._file_writer.flush()
+
+            coord.request_stop()
+            coord.join(threads)
 
 
 def run(target,
