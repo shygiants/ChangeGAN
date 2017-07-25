@@ -65,6 +65,7 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
                     return outputs_a
 
                 bbox_channel_a = _get_bbox(inputs_a)
+                bbox_channel_b = _get_bbox(inputs_b)
 
                 outputs_ab, z_a_b = converter_ab(inputs_a)
                 outputs_bbox_ab = tf.concat([outputs_ab, bbox_channel_a], 3)
@@ -129,8 +130,12 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
     l_g_b = tf.reduce_mean(tf.squared_difference(logits_b_fake, 1.))
     l_const_a = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_a), outputs_aba))
     l_const_b = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_b), outputs_bab))
+    l_color_a = tf.reduce_mean(tf.squared_difference(tf.reduce_mean(_remove_bbox(inputs_a) * bbox_channel_a, axis=[0, 1, 2]),
+                                                     tf.reduce_mean(outputs_ab * bbox_channel_a, axis=[0, 1, 2])))
+    l_color_b = tf.reduce_mean(tf.squared_difference(tf.reduce_mean(_remove_bbox(inputs_b) * bbox_channel_b, axis=[0, 1, 2]),
+                                                     tf.reduce_mean(outputs_ba * bbox_channel_a, axis=[0, 1, 2])))
 
-    l_g = l_g_a + l_g_b + 10. * (l_const_a + l_const_b)
+    l_g = l_g_a + l_g_b + 5. * (l_const_a + l_const_b) + 5. * (l_color_a + l_color_b)
     train_op_g = tf.train.AdamOptimizer(
         learning_rate=learning_rate,
         beta1=0.5,
@@ -150,6 +155,8 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
         tf.summary.scalar('L_G_B', l_g_b)
         tf.summary.scalar('L_Const_A', l_const_a)
         tf.summary.scalar('L_Const_B', l_const_b)
+        tf.summary.scalar('L_Color_A', l_color_a)
+        tf.summary.scalar('L_Color_B', l_color_b)
         tf.summary.scalar('L_G', l_g)
 
     train_op = tf.group(*[train_op_d_a, train_op_d_b, train_op_g])
