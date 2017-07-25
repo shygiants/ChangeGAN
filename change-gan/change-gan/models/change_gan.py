@@ -64,26 +64,25 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
 
                     return outputs_a
 
-                bbox_channel_a = _get_bbox(inputs_a)
+                inputs_a, bbox_channel_a = _split_image_bbox(inputs_a)
+                inputs_b, bbox_channel_b = _split_image_bbox(inputs_b)
 
                 outputs_ab, z_a_b = converter_ab(inputs_a)
-                outputs_bbox_ab = tf.concat([outputs_ab, bbox_channel_a], 3)
                 outputs_ba = converter_ba(inputs_b, z_a_b)
-                outputs_bbox_ba = tf.concat([outputs_ba, bbox_channel_a], 3)
 
-                outputs_bab, _ = converter_ab(outputs_bbox_ba, reuse=True)
-                outputs_aba = converter_ba(outputs_bbox_ab, z_a_b, reuse=True)
+                outputs_bab, _ = converter_ab(outputs_ba, reuse=True)
+                outputs_aba = converter_ba(outputs_ab, z_a_b, reuse=True)
 
                 logits_a_real, probs_a_real = discriminator(inputs_a, deep_encoder_dims, scope='Discriminator_A')
-                logits_a_fake, probs_a_fake = discriminator(outputs_bbox_ba, deep_encoder_dims, scope='Discriminator_A', reuse=True)
+                logits_a_fake, probs_a_fake = discriminator(outputs_ba, deep_encoder_dims, scope='Discriminator_A', reuse=True)
                 logits_b_real, probs_b_real = discriminator(inputs_b, deep_encoder_dims, scope='Discriminator_B')
-                logits_b_fake, probs_b_fake = discriminator(outputs_bbox_ab, deep_encoder_dims, scope='Discriminator_B', reuse=True)
+                logits_b_fake, probs_b_fake = discriminator(outputs_ab, deep_encoder_dims, scope='Discriminator_B', reuse=True)
 
                 outputs = [outputs_ba, outputs_ab, outputs_aba, outputs_bab]
 
     with tf.name_scope('images'):
-        tf.summary.image('X_A', _remove_bbox(inputs_a))
-        tf.summary.image('X_B', _remove_bbox(inputs_b))
+        tf.summary.image('X_A', inputs_a)
+        tf.summary.image('X_B', inputs_b)
         tf.summary.image('X_BA', outputs_ba)
         tf.summary.image('X_AB', outputs_ab)
         tf.summary.image('X_ABA', outputs_aba)
@@ -127,8 +126,8 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
     # Losses for generators
     l_g_a = tf.reduce_mean(tf.squared_difference(logits_a_fake, 1.))
     l_g_b = tf.reduce_mean(tf.squared_difference(logits_b_fake, 1.))
-    l_const_a = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_a), outputs_aba))
-    l_const_b = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_b), outputs_bab))
+    l_const_a = tf.reduce_mean(tf.losses.absolute_difference(inputs_a, outputs_aba))
+    l_const_b = tf.reduce_mean(tf.losses.absolute_difference(inputs_b, outputs_bab))
 
     l_g = l_g_a + l_g_b + 10. * (l_const_a + l_const_b)
     train_op_g = tf.train.AdamOptimizer(
