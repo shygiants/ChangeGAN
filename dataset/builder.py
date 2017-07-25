@@ -125,7 +125,7 @@ def _process_dataset(attribute, num_shards):
     _process_image_files(attribute, image_files, num_shards)
 
 
-def _process_bbox_dataset(split_ratio=0.9):
+def _process_bbox_dataset(split_ratio=0.95):
     image_files = []
     bboxes = []
     labels = []
@@ -134,8 +134,16 @@ def _process_bbox_dataset(split_ratio=0.9):
     image_files.append(images_top)
     bboxes.append(bboxes_top)
     labels.append([1] * len(bboxes_top))
+    images_top, bboxes_top = deepfashion.get_image_with_bbox('top,flat')
+    image_files.append(images_top)
+    bboxes.append(bboxes_top)
+    labels.append([1] * len(bboxes_top))
 
     images_bottom, bboxes_bottom = deepfashion.get_image_with_bbox('bottom,front')
+    image_files.append(images_bottom)
+    bboxes.append(bboxes_bottom)
+    labels.append([2] * len(bboxes_bottom))
+    images_bottom, bboxes_bottom = deepfashion.get_image_with_bbox('bottom,flat')
     image_files.append(images_bottom)
     bboxes.append(bboxes_bottom)
     labels.append([2] * len(bboxes_bottom))
