@@ -19,7 +19,7 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
                             weights_regularizer=slim.l2_regularizer(weight_decay)):
             with slim.arg_scope([slim.batch_norm],
-                                is_training=is_training):
+                                is_training=True):
                 def converter_ab(inputs_a, reuse=None):
                     ################
                     # Encoder part #
@@ -74,7 +74,8 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
                 logits_b_real, probs_b_real = discriminator(inputs_b, deep_encoder_dims, scope='Discriminator_B')
                 logits_b_fake, probs_b_fake = discriminator(outputs_ab, deep_encoder_dims, scope='Discriminator_B', reuse=True)
 
-                outputs = [outputs_ba, outputs_ab, outputs_aba, outputs_bab]
+                outputs = [inputs_a, inputs_b, outputs_ba, outputs_ab, outputs_aba, outputs_bab]
+                outputs = map(lambda image: tf.image.convert_image_dtype(image, dtype=tf.uint8), outputs)
 
     with tf.name_scope('images'):
         tf.summary.image('X_A', inputs_a)

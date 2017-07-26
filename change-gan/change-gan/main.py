@@ -10,6 +10,8 @@ import tensorflow as tf
 from datasets import dataset_factory
 from models import models_factory
 from models import autoconverter, change_gan
+from google.cloud import storage
+from PIL import Image
 
 slim = tf.contrib.slim
 
@@ -112,6 +114,9 @@ class EvaluationRunHook(tf.train.SessionRunHook):
 
 def run(target,
         is_chief,
+        eval,
+        eval_output_dir,
+        eval_output_bucket,
         train_steps,
         eval_steps,
         job_dir,
@@ -144,7 +149,7 @@ def run(target,
     #
     # See https://youtu.be/la_M6bCV91M?t=1203 for details on
     # distributed TensorFlow and motivation about chief.
-    if is_chief:
+    if not eval and is_chief:
         # Do evaluation job
         evaluation_graph = tf.Graph()
         with evaluation_graph.as_default():
@@ -165,6 +170,89 @@ def run(target,
         )]
     else:
         hooks = []
+
+    if eval:
+        # Do evaluation job
+        evaluation_graph = tf.Graph()
+        with evaluation_graph.as_default():
+            # Inputs
+            images_a, images_b = change_gan.input_fn(
+                eval_dataset_a, eval_dataset_b,
+                batch_size=eval_batch_size, is_training=False)
+
+            # Model
+            outputs = change_gan.model_fn(
+                images_a, images_b, learning_rate, is_training=False)
+
+            # Saver class add ops to save and restore
+            # variables to and from checkpoint
+            saver = tf.train.Saver()
+            # Creates a global step to contain a counter for
+            # the global training step
+            gs = tf.train.get_or_create_global_step()
+
+        """Run model evaluation and generate summaries."""
+        coord = tf.train.Coordinator(clean_stop_exception_types=(
+            tf.errors.CancelledError, tf.errors.OutOfRangeError))
+
+        with tf.Session(graph=evaluation_graph) as session:
+            # Restores previously saved variables from latest checkpoint
+            saver.restore(session, tf.train.latest_checkpoint(job_dir))
+
+            session.run([
+                tf.tables_initializer(),
+                tf.local_variables_initializer()
+            ])
+            threads = tf.train.start_queue_runners(coord=coord, sess=session)
+            train_step = session.run(gs)
+
+            tf.logging.info('Starting Evaluation For Step: {}'.format(train_step))
+
+            client = storage.Client()
+            # TODO: bucket to arg
+            bucket = client.get_bucket(eval_output_bucket)
+
+            with coord.stop_on_exception():
+                eval_step = 0
+                while not coord.should_stop() and (eval_steps is None or
+                                                           eval_step < eval_steps):
+                    inputs_a, inputs_b, outputs_ba, outputs_ab, outputs_aba, outputs_bab = session.run(
+                        outputs)
+                    if eval_step % 100 == 0:
+                        tf.logging.info("On Evaluation Step: {}".format(eval_step))
+                    eval_step += 1
+
+                    def save_to_gs(image, filepath):
+                        blob = bucket.blob(filepath)
+                        outfile = '/tmp/img.jpg'
+                        image.save(outfile)
+                        of = open(outfile, 'rb')
+                        blob.upload_from_file(of)
+
+                    # TODO: Save results
+                    for i in range(eval_batch_size):
+                        inputs_a_img = Image.fromarray(inputs_a[i])
+                        inputs_b_img = Image.fromarray(inputs_b[i])
+                        outputs_ba_img = Image.fromarray(outputs_ba[i])
+                        outputs_ab_img = Image.fromarray(outputs_ab[i])
+
+                        # TODO: Eval output as arg
+                        save_to_gs(inputs_a_img,
+                                   os.path.join(eval_output_dir, str(train_step),
+                                                'inputs_a_{}_{}.jpg'.format(eval_step, i)))
+                        save_to_gs(inputs_b_img,
+                                   os.path.join(eval_output_dir, str(train_step),
+                                                'inputs_b_{}_{}.jpg'.format(eval_step, i)))
+                        save_to_gs(outputs_ba_img,
+                                   os.path.join(eval_output_dir, str(train_step),
+                                                'outputs_ba_{}_{}.jpg'.format(eval_step, i)))
+                        save_to_gs(outputs_ab_img,
+                                   os.path.join(eval_output_dir, str(train_step),
+                                                'outputs_ab_{}_{}.jpg'.format(eval_step, i)))
+
+            coord.request_stop()
+            coord.join(threads)
+        return
 
     with tf.Graph().as_default():
         # Placement of ops on devices using replica device setter
