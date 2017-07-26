@@ -340,6 +340,14 @@ def dispatch(*args, **kwargs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    def str2bool(v):
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+
     parser.add_argument('--train-steps',
                         type=int,
                         help='Maximum number of training steps to perform.')
@@ -398,6 +406,18 @@ if __name__ == '__main__':
                         type=float,
                         default=0.002,
                         help='Learning rate for SGD')
+    parser.add_argument('--eval',
+                        type=str2bool,
+                        default=False,
+                        help='Whether to eval')
+    parser.add_argument('--eval-output-dir',
+                        type=str,
+                        default='eval-output',
+                        help='The directory where the eval output files are stored.')
+    parser.add_argument('--eval-output-bucket',
+                        type=str,
+                        default='mlcampjeju2017-mlengine',
+                        help='The directory where the eval output files are stored.')
 
     parser.add_argument('--verbosity',
                         choices=[
