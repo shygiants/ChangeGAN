@@ -276,3 +276,5 @@ buck-out/
 !.vscode/extensions.json
 
 # End of https://www.gitignore.io/api/node,reactnative,visualstudiocode
+
+src/assets

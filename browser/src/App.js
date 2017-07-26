@@ -1,8 +1,9 @@
 import React, { Component } from 'react';
 import './App.css';
-import Slider from 'react-toolbox/lib/slider';
+import './assets/react-toolbox/theme.css';
+import Slider from 'react-toolbox/lib/slider/Slider';
 
-import theme from 'assets/react-toolbox/theme'
+import theme from './assets/react-toolbox/theme'
 import ThemeProvider from 'react-toolbox/lib/ThemeProvider';
 
 class App extends Component {
@@ -18,30 +19,29 @@ class App extends Component {
     this.handleChange = this.handleChange.bind(this);
   }
 
-  handleChange(event) {
+  handleChange(value) {
     this.setState({
-      batch: event.target.value
+      batch: value
     });
   }
 
   render() {
     return (
       <ThemeProvider theme={theme}>
-        <div className="App">
-          <div>
-            <Slider pinned snaps min={0} max={10} step={1} editable value={this.state.batch} onChange={this.handleChange} />
+        <section>
+          <div className="slider">
+            <Slider pinned snaps min={1} max={10} step={1} editable value={this.state.batch} onChange={this.handleChange} />  
           </div>
-          <div>
-            {[...Array(this.batchSize).keys()].map(idx => 
-                <div>
-                  <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/inputs_a_${this.state.batch}_${idx}.jpg`} alt=""/>
-                  <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/inputs_b_${this.state.batch}_${idx}.jpg`} alt=""/>
-                  <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/outputs_ba_${this.state.batch}_${idx}.jpg`} alt=""/>
-                  <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/outputs_ab_${this.state.batch}_${idx}.jpg`} alt=""/>
-                </div>
-              )}
-          </div>
-        </div>
+            
+          {[...Array(this.batchSize).keys()].map(idx => 
+              <div className="image-section">
+                <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/inputs_a_${this.state.batch}_${idx}.jpg`} alt=""/>
+                <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/inputs_b_${this.state.batch}_${idx}.jpg`} alt=""/>
+                <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/outputs_ba_${this.state.batch}_${idx}.jpg`} alt=""/>
+                <img src={`https://storage.googleapis.com/mlcampjeju2017-mlengine/eval-output/${this.state.step}/outputs_ab_${this.state.batch}_${idx}.jpg`} alt=""/>
+              </div>
+            )}
+        </section>
       </ThemeProvider>
     );
   }
