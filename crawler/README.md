@@ -1,6 +1,10 @@
 # Crawler
 
+![Logos of Apparel Brands](https://github.com/shygiants/ChangeGAN/blob/master/static/apparel-brands.png?raw=true)
+
 ## Preliminary
+
+![Logo of Selenium](http://www.seleniumhq.org/images/big-logo.png)
 
 * [Selenium](http://www.seleniumhq.org)
 * [Chromedriver](https://sites.google.com/a/chromium.org/chromedriver/downloads)

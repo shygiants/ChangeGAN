@@ -1,8 +1,22 @@
 # ChangeGAN
 
-![Abstract image of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/abstract.png)
+![Abstract image of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/abstract.png?raw=true)
 
 Change part of image with other image. For instance, change clothes that a model wearing with other clothes.
+
+![Description of structure of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/structure.png?raw=true)
+
+Above is the main structure of ChangeGAN.
+
+There are two types of loss.
+
+GAN Loss:
+
+![GAN loss of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/gan-loss.png?raw=true)
+
+Reconstruction Loss:
+
+![Reconstruction loss of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/reconstruction-loss.png?raw=true)
 
 ## AutoConverter
 
