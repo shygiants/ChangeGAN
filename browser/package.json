@@ -17,7 +17,8 @@
   },
   "reactToolbox": {
     "include": [
-      "SLIDER"
+      "SLIDER",
+      "TABS"
     ],
     "customProperties": {
       "animation-duration": "0.3s",
