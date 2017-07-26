@@ -9,7 +9,7 @@ MAIN_TRAINER_MODULE=change-gan.main
 
 BUCKET_NAME=mlcampjeju2017-mlengine
 #JOB_DIR="gs://$BUCKET_NAME/autoconverter-7"
-JOB_DIR="gs://$BUCKET_NAME/job-dir/change-gan-bbox/change-gan-bbox-16"
+JOB_DIR="gs://$BUCKET_NAME/job-dir/change-gan-bbox/change-gan-bbox-17"
 PACKAGE_STAGING_LOCATION="gs://$BUCKET_NAME/stage"
 TRAIN_DIR="gs://$BUCKET_NAME/data-bbox"
 EVAL_DIR="gs://$BUCKET_NAME/data-bbox"
