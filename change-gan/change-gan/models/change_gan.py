@@ -64,6 +64,44 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
 
                     return outputs_a
 
+                def autoencoder_a(inputs_a, reuse=None):
+                    ################
+                    # Encoder part #
+                    ################
+                    z_a = encoder(inputs_a, deep_encoder_dims, scope='Encoder_A', reuse=reuse)
+
+                    ####################
+                    # Transformer part #
+                    ####################
+                    z_a = transformer(z_a, deep_encoder_dims[-1], num_blocks=num_blocks,
+                                      scope='Transformer_A', reuse=reuse)
+
+                    ################
+                    # Decoder part #
+                    ################
+                    outputs_a = decoder(z_a, deep_decoder_dims, scope='Decoder_A', reuse=reuse)
+
+                    return outputs_a
+
+                def autoencoder_b(inputs_b, reuse=None):
+                    ################
+                    # Encoder part #
+                    ################
+                    z_b = encoder(inputs_b, encoder_dims, scope='Encoder_B', reuse=reuse)
+
+                    ####################
+                    # Transformer part #
+                    ####################
+                    z_b = transformer(z_b, encoder_dims[-1], num_blocks=num_blocks,
+                                      scope='Transformer_B', reuse=reuse)
+
+                    ################
+                    # Decoder part #
+                    ################
+                    outputs_b = decoder(z_b, decoder_dims, scope='Decoder_B', reuse=reuse)
+
+                    return outputs_b
+
                 bbox_channel_a = _get_bbox(inputs_a)
 
                 outputs_ab, z_a_b = converter_ab(inputs_a)
@@ -73,6 +111,9 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
 
                 outputs_bab, _ = converter_ab(outputs_bbox_ba, reuse=True)
                 outputs_aba = converter_ba(outputs_bbox_ab, z_a_b, reuse=True)
+
+                outputs_aa = autoencoder_a(inputs_a, reuse=True)
+                outputs_bb = autoencoder_a(inputs_b, reuse=True)
 
                 logits_a_real, probs_a_real = discriminator(inputs_a, deep_encoder_dims, scope='Discriminator_A')
                 logits_a_fake, probs_a_fake = discriminator(outputs_bbox_ba, deep_encoder_dims, scope='Discriminator_A', reuse=True)
@@ -128,10 +169,14 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
     # Losses for generators
     l_g_a = tf.reduce_mean(tf.squared_difference(logits_a_fake, 1.))
     l_g_b = tf.reduce_mean(tf.squared_difference(logits_b_fake, 1.))
-    l_const_a = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_a), outputs_aba))
-    l_const_b = tf.reduce_mean(tf.losses.absolute_difference(_remove_bbox(inputs_b), outputs_bab))
+    inputs_a = _remove_bbox(inputs_a)
+    inputs_b = _remove_bbox(inputs_b)
+    l_const_a = tf.reduce_mean(tf.losses.absolute_difference(inputs_a, outputs_aba))
+    l_const_b = tf.reduce_mean(tf.losses.absolute_difference(inputs_b, outputs_bab))
+    l_auto_a = tf.reduce_mean(tf.losses.absolute_difference(inputs_a, outputs_aa))
+    l_auto_b = tf.reduce_mean(tf.losses.absolute_difference(inputs_b, outputs_bb))
 
-    l_g = l_g_a + l_g_b + 10. * (l_const_a + l_const_b)
+    l_g = l_g_a + l_g_b + 5. * (l_const_a + l_const_b + l_auto_a + l_auto_b)
     train_op_g = tf.train.AdamOptimizer(
         learning_rate=learning_rate,
         beta1=0.5,
@@ -151,6 +196,8 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
         tf.summary.scalar('L_G_B', l_g_b)
         tf.summary.scalar('L_Const_A', l_const_a)
         tf.summary.scalar('L_Const_B', l_const_b)
+        tf.summary.scalar('L_Auto_A', l_auto_a)
+        tf.summary.scalar('L_Auto_B', l_auto_b)
         tf.summary.scalar('L_G', l_g)
 
     train_op = tf.group(*[train_op_d_a, train_op_d_b, train_op_g])
