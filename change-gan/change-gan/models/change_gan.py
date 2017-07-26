@@ -153,9 +153,9 @@ def model_fn(inputs_a, inputs_b, learning_rate, num_blocks=9, is_training=True, 
         tf.summary.scalar('L_Const_B', l_const_b)
         tf.summary.scalar('L_G', l_g)
 
-    train_op = tf.group(*[train_op_d_a, train_op_d_b, train_op_g])
+    train_op_d = tf.group(*[train_op_d_a, train_op_d_b])
 
-    return train_op, global_step, outputs
+    return train_op_d, train_op_g, global_step, outputs
 
 
 def input_fn(dataset_a, dataset_b, batch_size=1, num_readers=4, is_training=True):

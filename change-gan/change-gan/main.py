@@ -272,7 +272,7 @@ def run(target,
                 batch_size=train_batch_size, is_training=True)
 
             # Model
-            train_op, global_step, outputs = model.model_fn(
+            train_op_d, train_op_g, global_step, outputs = model.model_fn(
                 images_a, images_b, learning_rate, is_training=True)
 
         # Creates a MonitoredSession for training
@@ -294,7 +294,8 @@ def run(target,
             # When train epochs is reached, session.should_stop() will be true.
             while (train_steps is None or step < train_steps) \
                     and not session.should_stop():
-                step, _ = session.run([global_step, train_op])
+                step, _, _ = session.run([global_step, train_op_d, train_op_g])
+                step, _ = session.run([global_step, train_op_g])
 
         # TODO: Export model
 
