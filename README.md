@@ -1,5 +1,7 @@
 # ChangeGAN
 
+[The Slides of Final Presentation](https://goo.gl/xDkLda)
+
 ![Abstract image of ChangeGAN](https://github.com/shygiants/ChangeGAN/blob/master/static/abstract.png?raw=true)
 
 [ChangeGAN](https://github.com/shygiants/ChangeGAN/tree/master/change-gan)
